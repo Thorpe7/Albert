@@ -1,13 +1,17 @@
+use chrono::Datelike;
+use chrono::{TimeZone, Utc};
 use dotenv::dotenv;
-use std::env;
-
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
+use serenity::builder::GetMessages;
 use serenity::model::channel::Message;
 use serenity::model::channel::Reaction;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::ReactionType;
+use serenity::model::prelude::Timestamp;
 use serenity::prelude::*;
+use std::collections::HashMap;
+use std::env;
 
 struct Handler;
 
@@ -31,20 +35,37 @@ impl EventHandler for Handler {
                     .message(&ctx.http, reaction.message_id)
                     .await
                 {
+                    let now = Utc::now();
+                    let start_of_today =
+                        Utc.with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0);
+
+                    let messages_today: Vec<HashMap<String, String>> = Vec::new();
+                    let message_getter = GetMessages::new().limit(100);
+                    let result_history = reaction
+                        .channel_id
+                        .messages(&ctx.http, message_getter)
+                        .await;
+                    if let Ok(history) = result_history {
+                        for chat in history {
+                            if chat.timestamp.to_utc() > start_of_today {
+                                let mut entry = HashMap::new();
+                                entry.insert(chat.author.name.clone(), chat.content.clone());
+                                messages_today.push(entry)
+                            }
+                        }
+                    }
+
+                    let formatted_messages: String = messages_today
+                        .iter()
+                        .map(|(username, content)| format!("**{}**: {}", username, content))
+                        .collect::<Vec<_>>()
+                        .join("\n");
                     let dm = CreateMessage::new().content("Detected robot emoji use...");
 
                     if let Err(why) = msg.author.direct_message(&ctx.http, dm).await {
                         println!("Failed to send dm to user: {why:?}")
                     }
                 }
-            }
-
-            if let Err(why) = reaction
-                .channel_id
-                .say(&ctx.http, "Detected robot emoji use...")
-                .await
-            {
-                println!("Error sending message about emoji: {why:?}");
             }
         }
     }
