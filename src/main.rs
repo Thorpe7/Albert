@@ -44,7 +44,9 @@ impl EventHandler for Handler {
                         .messages(&ctx.http, message_getter)
                         .await;
                     if let Ok(history) = result_history {
-                        for chat in history {
+                        for chat in history { // TODO: This should just be a vector of messages
+                            // TODO: Vector of messages preserves order they were sent
+                            // TODO: Will help in context for llm
                             if chat.timestamp.to_utc() > start_of_today {
                                 let mut entry = HashMap::new();
                                 entry.insert(chat.author.name.clone(), chat.content.clone());
@@ -52,7 +54,7 @@ impl EventHandler for Handler {
                             }
                         }
                     }
-
+                    // TODO: This toy function should just print the messages of the day in order
                     let formatted_messages: String = messages_today
                         .iter()
                         .flat_map(|entry| entry.iter())
@@ -60,6 +62,7 @@ impl EventHandler for Handler {
                         .collect::<Vec<_>>()
                         .join("\n");
                     let dm = CreateMessage::new().content(&formatted_messages);
+                    println!("{}", formatted_messages);
 
                     if let Err(why) = msg.author.direct_message(&ctx.http, dm).await {
                         println!("Failed to send dm to user: {why:?}")
