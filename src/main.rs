@@ -56,13 +56,12 @@ impl EventHandler for Handler {
                     }
                     // TODO: This toy function should just print the messages of the day in order
                     let formatted_messages: String = messages_today
-                        .iter()
+                        .iter().rev()
                         .flat_map(|entry| entry.iter())
                         .map(|(username, content)| format!("**{}**: {}", username, content))
                         .collect::<Vec<_>>()
                         .join("\n");
                     let dm = CreateMessage::new().content(&formatted_messages);
-                    println!("{}", formatted_messages);
 
                     if let Err(why) = msg.author.direct_message(&ctx.http, dm).await {
                         println!("Failed to send dm to user: {why:?}")
