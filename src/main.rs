@@ -1,5 +1,6 @@
-use time::{OffsetDateTime, Date, Time};
 use dotenv::dotenv;
+use serde::Serialize;
+use serde_json::to_string_pretty;
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::builder::GetMessages;
@@ -10,6 +11,15 @@ use serenity::model::prelude::ReactionType;
 use serenity::prelude::*;
 use std::collections::HashMap;
 use std::env;
+use std::fs::File;
+use std::io::Write;
+use time::{Date, OffsetDateTime, Time};
+
+#[derive(Serialize)]
+struct ChatMessage {
+    author: String,
+    content: String,
+}
 
 struct Handler;
 
@@ -34,29 +44,46 @@ impl EventHandler for Handler {
                     .await
                 {
                     let now = OffsetDateTime::now_utc();
-                    let today = Date::from_calendar_date(now.year(), now.month(), now.day()).unwrap();
+                    let today =
+                        Date::from_calendar_date(now.year(), now.month(), now.day()).unwrap();
                     let start_of_today = today.with_time(Time::MIDNIGHT).assume_utc();
-
                     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
+
                     let message_getter = GetMessages::new().limit(100);
                     let result_history = reaction
                         .channel_id
                         .messages(&ctx.http, message_getter)
                         .await;
                     if let Ok(history) = result_history {
-                        for chat in history { // TODO: This should just be a vector of messages
-                            // TODO: Vector of messages preserves order they were sent
-                            // TODO: Will help in context for llm
+                        for chat in history.iter() {
                             if chat.timestamp.to_utc() > start_of_today {
                                 let mut entry = HashMap::new();
                                 entry.insert(chat.author.name.clone(), chat.content.clone());
                                 messages_today.push(entry)
                             }
                         }
+
+                        let json_formatted_messages: Vec<ChatMessage> = history
+                            .iter()
+                            .rev()
+                            .filter(|msg| msg.timestamp.to_utc() > start_of_today)
+                            .map(|msg| ChatMessage {
+                                author: msg.author.name.clone(),
+                                content: msg.content.clone(),
+                            })
+                            .collect();
+                        let json_string = to_string_pretty(&json_formatted_messages)
+                            .expect("Failed to serialize messages to JSON...");
+                        let mut output_file = File::create("chat_history.json")
+                            .expect("Failed to create output file...");
+                        output_file
+                            .write_all(json_string.as_bytes())
+                            .expect("Failed to write to 'chat_history.json'...");
                     }
-                    // TODO: This toy function should just print the messages of the day in order
+
                     let formatted_messages: String = messages_today
-                        .iter().rev()
+                        .iter()
+                        .rev()
                         .flat_map(|entry| entry.iter())
                         .map(|(username, content)| format!("**{}**: {}", username, content))
                         .collect::<Vec<_>>()
