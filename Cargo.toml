@@ -7,4 +7,4 @@ edition = "2021"
 serenity = { version = "0.12.4", default-features = false, features = ["client", "gateway", "rustls_backend", "model"]}
 tokio = { version = "1.34.0", features = ["full"] }
 dotenv = "0.15"
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["macros", "formatting"] }

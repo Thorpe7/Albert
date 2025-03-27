@@ -1,5 +1,4 @@
-use chrono::Datelike;
-use chrono::{TimeZone, Utc};
+use time::{OffsetDateTime, Date, Time};
 use dotenv::dotenv;
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
@@ -8,7 +7,6 @@ use serenity::model::channel::Message;
 use serenity::model::channel::Reaction;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::ReactionType;
-use serenity::model::prelude::Timestamp;
 use serenity::prelude::*;
 use std::collections::HashMap;
 use std::env;
@@ -35,11 +33,11 @@ impl EventHandler for Handler {
                     .message(&ctx.http, reaction.message_id)
                     .await
                 {
-                    let now = Utc::now();
-                    let start_of_today =
-                        Utc.with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0);
+                    let now = OffsetDateTime::now_utc();
+                    let today = Date::from_calendar_date(now.year(), now.month(), now.day()).unwrap();
+                    let start_of_today = today.with_time(Time::MIDNIGHT).assume_utc();
 
-                    let messages_today: Vec<HashMap<String, String>> = Vec::new();
+                    let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
                     let message_getter = GetMessages::new().limit(100);
                     let result_history = reaction
                         .channel_id
@@ -57,10 +55,11 @@ impl EventHandler for Handler {
 
                     let formatted_messages: String = messages_today
                         .iter()
+                        .flat_map(|entry| entry.iter())
                         .map(|(username, content)| format!("**{}**: {}", username, content))
                         .collect::<Vec<_>>()
                         .join("\n");
-                    let dm = CreateMessage::new().content("Detected robot emoji use...");
+                    let dm = CreateMessage::new().content(&formatted_messages);
 
                     if let Err(why) = msg.author.direct_message(&ctx.http, dm).await {
                         println!("Failed to send dm to user: {why:?}")
