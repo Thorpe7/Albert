@@ -16,7 +16,6 @@ use std::io::Write;
 use time::{Date, OffsetDateTime, Time};
 
 // !NEXT STEPS:
-// TODO: Format & clean up code to align w/ rust standards better
 // TODO: Addition of python code LangChain + Local optimized LLM
 // TODO: Connect components
 // TODO: Containerize

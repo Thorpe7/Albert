@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "python-llm"
+version = "0.1.0"
+description = "LLM component of Discor Bot Albert"
+authors = ["Thorpe7 <maxwell.thorpe7@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+langchain-huggingface = "^0.1.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
