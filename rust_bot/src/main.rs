@@ -7,7 +7,6 @@ use dotenv::dotenv;
 use serenity::prelude::*;
 use std::env;
 // !NEXT STEPS:
-// TODO: Format & clean up code to align w/ rust standards better
 // TODO: Addition of python code LangChain + Local optimized LLM
 // TODO: Connect components
 // TODO: Containerize
