@@ -1,15 +1,19 @@
 mod bot;
 mod export;
 mod message_utils;
+mod python_runner;
 
 use bot::Handler;
 use dotenv::dotenv;
 use serenity::prelude::*;
 use std::env;
+
 // !NEXT STEPS:
-// TODO: Addition of python code LangChain + Local optimized LLM
-// TODO: Connect components
-// TODO: Containerize
+// TODO: Connect components (Python runs, now read json file & convert to str)
+// TODO: Add context window check mechanism
+// TODO: Add logging and debugging logs for rust & python, esp to see model responses
+// TODO: Containerize & Explicit download and install of local model & pre-load checkpoint shards
+// TODO: Trial run
 // TODO: Deploy, tbd where.
 
 #[tokio::main]

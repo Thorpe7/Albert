@@ -1,5 +1,6 @@
-use crate::export::write_messages_to_json;
-use crate::message_utils::{get_start_of_today, string_format_today_messages, ChatMessage};
+use crate::export::write_messages_to_txt;
+use crate::message_utils::{get_start_of_today, string_format_today_messages};
+use crate::python_runner::run_python;
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::builder::GetMessages;
@@ -47,20 +48,11 @@ impl EventHandler for Handler {
                                 messages_today.push(entry)
                             }
                         }
-
-                        let json_formatted_messages: Vec<ChatMessage> = history
-                            .iter()
-                            .rev()
-                            .filter(|msg| msg.timestamp.to_utc() > start_of_today)
-                            .map(|msg| ChatMessage {
-                                author: msg.author.name.clone(),
-                                content: msg.content.clone(),
-                            })
-                            .collect();
-                        write_messages_to_json(&json_formatted_messages);
                     }
 
                     let formatted_messages: String = string_format_today_messages(&messages_today);
+                    write_messages_to_txt(&formatted_messages);
+                    run_python();
                     let dm = CreateMessage::new().content(&formatted_messages);
 
                     if let Err(why) = msg.author.direct_message(&ctx.http, dm).await {

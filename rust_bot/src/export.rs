@@ -11,3 +11,11 @@ pub fn write_messages_to_json(messages: &Vec<ChatMessage>) {
         .write_all(json_string.as_bytes())
         .expect("Failed to write to 'chat_history.json'...");
 }
+
+pub fn write_messages_to_txt(messages: &String) {
+    let mut output_file =
+        File::create("chat_history.txt").expect("Failed to create output file...");
+    output_file
+        .write_all(messages.as_bytes())
+        .expect("Failed to write to 'chat_history.txt...");
+}

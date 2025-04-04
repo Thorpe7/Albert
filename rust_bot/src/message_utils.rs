@@ -19,7 +19,7 @@ pub fn string_format_today_messages(messages_today: &Vec<HashMap<String, String>
         .iter()
         .rev()
         .flat_map(|entry| entry.iter())
-        .map(|(username, content)| format!("**{}**: {}", username, content))
+        .map(|(username, content)| format!("Author: **{}**; Content: {}", username, content))
         .collect::<Vec<_>>()
         .join("\n")
 }

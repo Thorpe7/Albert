@@ -16,7 +16,6 @@ from langchain.output_parsers import PydanticOutputParser
 
 from utils.output_structures import SummaryList
 
-
 load_dotenv()
 
 
@@ -103,6 +102,11 @@ class ModelHandler:
                 """<s>[INST]
                 You are a summarization assistant. Summarize each user's main points and sentiment.
 
+                ONLY output real JSON data based on the following example.
+                DO NOT describe the format. DO NOT create a JSON schema. DO NOT explain the structure.
+
+                Example output (this is a real output, not a schema):
+
                 {format_instructions}
 
                 Message history:
@@ -110,6 +114,7 @@ class ModelHandler:
 
                 Summarize each user's main points and attitude in 1-2 sentences.
                 Provide one summary per user.
+                Output only real JSON instances.
                 [/INST]"""
             ),
             input_variables=["message_history"],
@@ -126,4 +131,4 @@ class ModelHandler:
     def generate_response(self, message_history: List) -> str:
         """Runs model pipeline & returns response."""
         response = self.chain.invoke({"message_history": {message_history}})
-        print(response)
+        return response
