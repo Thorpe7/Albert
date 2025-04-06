@@ -16,6 +16,12 @@ use std::env;
 // TODO: Trial run
 // TODO: Deploy, tbd where.
 
+// !Testing Notes:
+// TODO: Add timezone corrections so UTC timezone difference doesn't include yesterday's msgs
+// TODO: Multiple users creates list format in output requiring output parsing modifications.
+// TODO: Gifs should just be summarized or ignored...
+// TODO: Fixing output structures...
+
 #[tokio::main]
 async fn main() {
     // Configure the client with your Discord bot token in the environment.

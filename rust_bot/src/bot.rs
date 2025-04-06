@@ -42,21 +42,36 @@ impl EventHandler for Handler {
 
                     if let Ok(history) = result_history {
                         for chat in history.iter() {
-                            if chat.timestamp.to_utc() > start_of_today {
+                            if chat.timestamp.to_utc() >= start_of_today {
+                                println!("{}", chat.timestamp.to_utc());
+                                println!("{}", start_of_today);
                                 let mut entry = HashMap::new();
                                 entry.insert(chat.author.name.clone(), chat.content.clone());
                                 messages_today.push(entry)
                             }
                         }
                     }
+                    let dm: CreateMessage;
+                    if messages_today.len() > 1 {
+                        let formatted_messages: String =
+                            string_format_today_messages(&messages_today);
+                        write_messages_to_txt(&formatted_messages);
+                        run_python();
+                        dm = CreateMessage::new().content(&formatted_messages);
+                    } else {
+                        dm = CreateMessage::new().content("No messages found to summarize...");
+                    }
 
-                    let formatted_messages: String = string_format_today_messages(&messages_today);
-                    write_messages_to_txt(&formatted_messages);
-                    run_python();
-                    let dm = CreateMessage::new().content(&formatted_messages);
-
-                    if let Err(why) = msg.author.direct_message(&ctx.http, dm).await {
-                        println!("Failed to send dm to user: {why:?}")
+                    if let Some(user_id) = reaction.user_id {
+                        if let Ok(user) = user_id.to_user(&ctx.http).await {
+                            if let Err(why) = user.direct_message(&ctx.http, dm).await {
+                                println!("Failed to send dm to user: {why:?}")
+                            }
+                        } else {
+                            println!("Failed to fetch user from user_id...")
+                        }
+                    } else {
+                        println!("No user_id on reaction...");
                     }
                 }
             }
