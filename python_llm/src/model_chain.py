@@ -48,7 +48,7 @@ class ModelHandler:
             "text-generation",
             model=model,
             tokenizer=tokenizer,
-            max_new_tokens=200,
+            max_new_tokens=300,
             temperature=0.5,
             top_p=0.9,
             device_map="auto",
@@ -101,6 +101,9 @@ class ModelHandler:
             template=(
                 """<s>[INST]
                 You are a summarization assistant. Summarize each user's main points and sentiment.
+
+                If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
+                Do NOT try to describe or interpret links.
 
                 ONLY output real JSON data based on the following example.
                 DO NOT describe the format. DO NOT create a JSON schema. DO NOT explain the structure.

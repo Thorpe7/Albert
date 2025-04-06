@@ -9,6 +9,9 @@ use serenity::prelude::*;
 use std::env;
 
 // !NEXT STEPS:
+// TODO: Add dynamic max token scaling w/ number of messages sent in the day.
+// Need way to format output json so that it doesn't cut off mid structure
+// TODO: Add reading of model_response.json in rust & send as message
 // TODO: Connect components (Python runs, now read json file & convert to str)
 // TODO: Add context window check mechanism
 // TODO: Add logging and debugging logs for rust & python, esp to see model responses
