@@ -48,7 +48,7 @@ class ModelHandler:
             "text-generation",
             model=model,
             tokenizer=tokenizer,
-            max_new_tokens=300,
+            max_new_tokens=400,
             temperature=0.5,
             top_p=0.9,
             device_map="auto",
@@ -106,10 +106,7 @@ class ModelHandler:
                 Do NOT try to describe or interpret links.
 
                 ONLY output real JSON data based on the following example.
-                DO NOT describe the format. DO NOT create a JSON schema. DO NOT explain the structure.
-
-                Example output (this is a real output, not a schema):
-
+                DO NOT describe the format. DO NOT create a JSON schema. DO NOT explain the structure. Adhere strictly to the formatting instructions:
                 {format_instructions}
 
                 Message history:

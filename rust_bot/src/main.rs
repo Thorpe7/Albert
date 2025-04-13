@@ -1,7 +1,7 @@
 mod bot;
-mod read_and_write;
 mod message_utils;
 mod python_runner;
+mod read_and_write;
 
 use bot::Handler;
 use dotenv::dotenv;
@@ -11,8 +11,6 @@ use std::env;
 // !NEXT STEPS:
 // TODO: Add dynamic max token scaling w/ number of messages sent in the day.
 // Need way to format output json so that it doesn't cut off mid structure
-// TODO: Add reading of model_response.json in rust & send as message
-// TODO: Connect components (Python runs, now read json file & convert to str)
 // TODO: Add context window check mechanism
 // TODO: Add logging and debugging logs for rust & python, esp to see model responses
 // TODO: Containerize & Explicit download and install of local model & pre-load checkpoint shards
@@ -21,9 +19,7 @@ use std::env;
 
 // !Testing Notes:
 // TODO: Add timezone corrections so UTC timezone difference doesn't include yesterday's msgs
-// TODO: Multiple users creates list format in output requiring output parsing modifications.
-// TODO: Gifs should just be summarized or ignored...
-// TODO: Fixing output structures...
+// TODO: Check that summarization works multiple times in a row and doesn't just respond with "No messages to summarize".
 
 #[tokio::main]
 async fn main() {

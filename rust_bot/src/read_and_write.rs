@@ -1,15 +1,20 @@
 use crate::message_utils::ChatMessage;
+use serde::Deserialize;
+use serde_json;
 use serde_json::to_string_pretty;
-use std::fs::read_to_string;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 
-pub struct ModelResponse {
-    summaries: Summaries,
+#[derive(Debug, Deserialize)]
+pub struct Summary {
+    pub author: String,
+    pub summary: String,
 }
+
+#[derive(Debug, Deserialize)]
 pub struct Summaries {
-    author: String,
-    summary: String,
+    pub summaries: Vec<Summary>,
 }
 
 pub fn write_messages_to_json(messages: &Vec<ChatMessage>) {
@@ -29,11 +34,10 @@ pub fn write_messages_to_txt(messages: &String) {
         .expect("Failed to write to 'chat_history.txt...");
 }
 
-pub fn read_json(file_path: Option<&str>) -> ModelResponse {
+pub fn read_json(file_path: Option<&str>) -> Result<Summaries, Box<dyn std::error::Error>> {
     let file_path = file_path.unwrap_or("model_response.json");
-    let model_response = read_to_string(&file_path)?;
-
-
-
-
+    let data = fs::read_to_string(&file_path)?;
+    let model_response: Summaries = serde_json::from_str(&data)?;
+    println!("{:?}", model_response);
+    Ok(model_response)
 }

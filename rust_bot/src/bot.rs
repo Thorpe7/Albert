@@ -1,6 +1,8 @@
-use crate::read_and_write::write_messages_to_txt;
-use crate::message_utils::{get_start_of_today, string_format_today_messages};
+use crate::message_utils::{
+    format_json_to_message, get_start_of_today, string_format_today_messages,
+};
 use crate::python_runner::run_python;
+use crate::read_and_write::{read_json, write_messages_to_txt};
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::builder::GetMessages;
@@ -27,7 +29,7 @@ impl EventHandler for Handler {
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
         if let ReactionType::Unicode(ref emoji) = reaction.emoji {
             if emoji == "🤖" {
-                if let Ok(msg) = reaction
+                if let Ok(_msg) = reaction
                     .channel_id
                     .message(&ctx.http, reaction.message_id)
                     .await
@@ -57,7 +59,15 @@ impl EventHandler for Handler {
                             string_format_today_messages(&messages_today);
                         write_messages_to_txt(&formatted_messages);
                         run_python();
-                        dm = CreateMessage::new().content(&formatted_messages);
+                        let model_response = match read_json(None) {
+                            Ok(data) => data,
+                            Err(e) => {
+                                println!("Failed to read JSON: {e}");
+                                return;
+                            }
+                        };
+                        let message_to_user = format_json_to_message(&model_response);
+                        dm = CreateMessage::new().content(&message_to_user);
                     } else {
                         dm = CreateMessage::new().content("No messages found to summarize...");
                     }
