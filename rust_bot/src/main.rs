@@ -1,16 +1,25 @@
 mod bot;
-mod export;
 mod message_utils;
+mod python_runner;
+mod read_and_write;
 
 use bot::Handler;
 use dotenv::dotenv;
 use serenity::prelude::*;
 use std::env;
+
 // !NEXT STEPS:
-// TODO: Addition of python code LangChain + Local optimized LLM
-// TODO: Connect components
-// TODO: Containerize
+// TODO: Add dynamic max token scaling w/ number of messages sent in the day.
+// Need way to format output json so that it doesn't cut off mid structure
+// TODO: Add context window check mechanism
+// TODO: Add logging and debugging logs for rust & python, esp to see model responses
+// TODO: Containerize & Explicit download and install of local model & pre-load checkpoint shards
+// TODO: Trial run
 // TODO: Deploy, tbd where.
+
+// !Testing Notes:
+// TODO: Add timezone corrections so UTC timezone difference doesn't include yesterday's msgs
+// TODO: Check that summarization works multiple times in a row and doesn't just respond with "No messages to summarize".
 
 #[tokio::main]
 async fn main() {

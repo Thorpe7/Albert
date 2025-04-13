@@ -16,7 +16,6 @@ from langchain.output_parsers import PydanticOutputParser
 
 from utils.output_structures import SummaryList
 
-
 load_dotenv()
 
 
@@ -49,7 +48,7 @@ class ModelHandler:
             "text-generation",
             model=model,
             tokenizer=tokenizer,
-            max_new_tokens=200,
+            max_new_tokens=400,
             temperature=0.5,
             top_p=0.9,
             device_map="auto",
@@ -103,6 +102,11 @@ class ModelHandler:
                 """<s>[INST]
                 You are a summarization assistant. Summarize each user's main points and sentiment.
 
+                If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
+                Do NOT try to describe or interpret links.
+
+                ONLY output real JSON data based on the following example.
+                DO NOT describe the format. DO NOT create a JSON schema. DO NOT explain the structure. Adhere strictly to the formatting instructions:
                 {format_instructions}
 
                 Message history:
@@ -110,6 +114,7 @@ class ModelHandler:
 
                 Summarize each user's main points and attitude in 1-2 sentences.
                 Provide one summary per user.
+                Output only real JSON instances.
                 [/INST]"""
             ),
             input_variables=["message_history"],
@@ -126,4 +131,4 @@ class ModelHandler:
     def generate_response(self, message_history: List) -> str:
         """Runs model pipeline & returns response."""
         response = self.chain.invoke({"message_history": {message_history}})
-        print(response)
+        return response

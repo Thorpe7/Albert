@@ -1,5 +1,8 @@
-use crate::export::write_messages_to_json;
-use crate::message_utils::{get_start_of_today, string_format_today_messages, ChatMessage};
+use crate::message_utils::{
+    format_json_to_message, get_start_of_today, string_format_today_messages,
+};
+use crate::python_runner::run_python;
+use crate::read_and_write::{read_json, write_messages_to_txt};
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::builder::GetMessages;
@@ -26,7 +29,7 @@ impl EventHandler for Handler {
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
         if let ReactionType::Unicode(ref emoji) = reaction.emoji {
             if emoji == "🤖" {
-                if let Ok(msg) = reaction
+                if let Ok(_msg) = reaction
                     .channel_id
                     .message(&ctx.http, reaction.message_id)
                     .await
@@ -41,30 +44,44 @@ impl EventHandler for Handler {
 
                     if let Ok(history) = result_history {
                         for chat in history.iter() {
-                            if chat.timestamp.to_utc() > start_of_today {
+                            if chat.timestamp.to_utc() >= start_of_today {
+                                println!("{}", chat.timestamp.to_utc());
+                                println!("{}", start_of_today);
                                 let mut entry = HashMap::new();
                                 entry.insert(chat.author.name.clone(), chat.content.clone());
                                 messages_today.push(entry)
                             }
                         }
-
-                        let json_formatted_messages: Vec<ChatMessage> = history
-                            .iter()
-                            .rev()
-                            .filter(|msg| msg.timestamp.to_utc() > start_of_today)
-                            .map(|msg| ChatMessage {
-                                author: msg.author.name.clone(),
-                                content: msg.content.clone(),
-                            })
-                            .collect();
-                        write_messages_to_json(&json_formatted_messages);
+                    }
+                    let dm: CreateMessage;
+                    if messages_today.len() > 1 {
+                        let formatted_messages: String =
+                            string_format_today_messages(&messages_today);
+                        write_messages_to_txt(&formatted_messages);
+                        run_python();
+                        let model_response = match read_json(None) {
+                            Ok(data) => data,
+                            Err(e) => {
+                                println!("Failed to read JSON: {e}");
+                                return;
+                            }
+                        };
+                        let message_to_user = format_json_to_message(&model_response);
+                        dm = CreateMessage::new().content(&message_to_user);
+                    } else {
+                        dm = CreateMessage::new().content("No messages found to summarize...");
                     }
 
-                    let formatted_messages: String = string_format_today_messages(&messages_today);
-                    let dm = CreateMessage::new().content(&formatted_messages);
-
-                    if let Err(why) = msg.author.direct_message(&ctx.http, dm).await {
-                        println!("Failed to send dm to user: {why:?}")
+                    if let Some(user_id) = reaction.user_id {
+                        if let Ok(user) = user_id.to_user(&ctx.http).await {
+                            if let Err(why) = user.direct_message(&ctx.http, dm).await {
+                                println!("Failed to send dm to user: {why:?}")
+                            }
+                        } else {
+                            println!("Failed to fetch user from user_id...")
+                        }
+                    } else {
+                        println!("No user_id on reaction...");
                     }
                 }
             }

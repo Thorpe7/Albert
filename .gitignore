@@ -1,3 +1,6 @@
 /target
 .env
 target
+chat_history.txt
+model_response.json
+.python-version
