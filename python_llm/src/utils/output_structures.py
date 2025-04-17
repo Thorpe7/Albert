@@ -1,5 +1,6 @@
 import json
-from pydantic import BaseModel, Field
+from typing import List
+from pydantic import BaseModel, Field, RootModel
 
 
 class UserSummary(BaseModel):
@@ -7,8 +8,8 @@ class UserSummary(BaseModel):
     summary: str = Field(description="A 1-2 sentence summary of what the user said")
 
 
-class SummaryList(BaseModel):
-    summaries: list[UserSummary]
+class SummaryList(RootModel[List[UserSummary]]):
+    pass
 
 
 def clean_model_output(output: str) -> dict:

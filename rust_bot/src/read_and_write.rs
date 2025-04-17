@@ -12,11 +12,6 @@ pub struct Summary {
     pub summary: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Summaries {
-    pub summaries: Vec<Summary>,
-}
-
 pub fn write_messages_to_json(messages: &Vec<ChatMessage>) {
     let json_string = to_string_pretty(&messages).expect("Failed to serialize messages to JSON...");
     let mut output_file =
@@ -34,10 +29,10 @@ pub fn write_messages_to_txt(messages: &String) {
         .expect("Failed to write to 'chat_history.txt...");
 }
 
-pub fn read_json(file_path: Option<&str>) -> Result<Summaries, Box<dyn std::error::Error>> {
+pub fn read_json(file_path: Option<&str>) -> Result<Vec<Summary>, Box<dyn std::error::Error>> {
     let file_path = file_path.unwrap_or("model_response.json");
     let data = fs::read_to_string(&file_path)?;
-    let model_response: Summaries = serde_json::from_str(&data)?;
+    let model_response: Vec<Summary> = serde_json::from_str(&data)?;
     println!("{:?}", model_response);
     Ok(model_response)
 }

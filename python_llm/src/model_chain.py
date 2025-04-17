@@ -26,12 +26,12 @@ class ModelHandler:
             load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
         )
         mistral_token = os.getenv("MISTRAL_TOKEN")
-        tokenizer = AutoTokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             "mistralai/Mistral-7B-Instruct-v0.3",
             token=mistral_token,
             device_map="auto",
         )
-        model = AutoModelForCausalLM.from_pretrained(
+        self.model = AutoModelForCausalLM.from_pretrained(
             "mistralai/Mistral-7B-Instruct-v0.3",
             torch_dtype=torch.float16,
             device_map="auto",
@@ -39,23 +39,23 @@ class ModelHandler:
             quantization_config=quant_config,
         )
 
-        if tokenizer.pad_token_id is None:
-            tokenizer.pad_token_id = tokenizer.eos_token_id
-        if model.config.pad_token_id is None:
-            model.config.pad_token_id = model.config.eos_token_id
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        if self.model.config.pad_token_id is None:
+            self.model.config.pad_token_id = self.model.config.eos_token_id
 
         self.pipeline = pipeline(
             "text-generation",
-            model=model,
-            tokenizer=tokenizer,
-            max_new_tokens=400,
+            model=self.model,
+            tokenizer=self.tokenizer,
+            max_new_tokens=100,
             temperature=0.5,
             top_p=0.9,
             device_map="auto",
             repetition_penalty=1.2,
             do_sample=True,
             torch_dtype=torch.float16,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.eos_token_id,
             return_full_text=False,
         )
         self.llm = HuggingFacePipeline(pipeline=self.pipeline)
@@ -68,20 +68,22 @@ class ModelHandler:
         complexity_score = textstat.flesch_reading_ease(question)
 
         if complexity_score > 60:
-            return 100  # Simple
+            return 300  # Simple
         elif complexity_score > 40:
-            return 200
+            return 800
         elif complexity_score > 20:
-            return 300
-        else:
-            return 500  # Complex
+            return 900
+        elif complexity_score > 10:
+            return 1100
+        elif complexity_score > 5:
+            return 1500  # Complex
 
     def _update_pipeline(self, message_history) -> None:
         max_new_tokens = self._determine_max_tokens(message_history)
         self.pipeline = pipeline(
-            "summarization",
-            model=self.pipeline.model,
-            tokenizer=self.pipeline.tokenizer,
+            "text-generation",
+            model=self.model,
+            tokenizer=self.tokenizer,
             max_new_tokens=max_new_tokens,
             temperature=0.5,
             top_p=0.9,
@@ -89,14 +91,19 @@ class ModelHandler:
             repetition_penalty=1.2,
             do_sample=True,
             torch_dtype=torch.float16,
-            pad_token_id=self.pipeline.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.eos_token_id,
             return_full_text=False,
         )
+
+        self.llm = HuggingFacePipeline(pipeline=self.pipeline)
+        self.chain = self.prompt | self.llm
+        print(f"Max New Tokens updated to: \n{max_new_tokens}")
 
     def _init_prompt(
         self,
     ) -> None:
         """Initializes the prompt to be used by the model."""
+        format_instructions = self.output_parser.get_format_instructions()
         self.prompt = PromptTemplate(
             template=(
                 """<s>[INST]
@@ -105,30 +112,31 @@ class ModelHandler:
                 If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
                 Do NOT try to describe or interpret links.
 
-                ONLY output real JSON data based on the following example.
-                DO NOT describe the format. DO NOT create a JSON schema. DO NOT explain the structure. Adhere strictly to the formatting instructions:
+                Summarize each user's main points and attitude in 1-2 sentences.
+                Provide ONLY ONE summary per user.
+                Output only real JSON instances. Never add a Top level summaries key. Always wrap the summaries in a list.
+                Adhere strictly to the formatting instructions:
                 {format_instructions}
 
                 Message history:
                 {message_history}
 
-                Summarize each user's main points and attitude in 1-2 sentences.
-                Provide one summary per user.
-                Output only real JSON instances.
                 [/INST]"""
             ),
             input_variables=["message_history"],
-            partial_variables={
-                "format_instructions": self.output_parser.get_format_instructions()
-            },
+            partial_variables={"format_instructions": format_instructions},
         )
 
     def _init_output_parser(
         self,
     ) -> None:
         self.output_parser = PydanticOutputParser(pydantic_object=SummaryList)
+        print(
+            f"Formatting instructions for model appear as: \n{self.output_parser.get_format_instructions()}"
+        )
 
     def generate_response(self, message_history: List) -> str:
         """Runs model pipeline & returns response."""
+        self._update_pipeline(message_history=message_history)
         response = self.chain.invoke({"message_history": {message_history}})
         return response
