@@ -17,6 +17,84 @@ from langchain.output_parsers import PydanticOutputParser
 from utils.output_structures import SummaryList
 
 load_dotenv()
+from llama_cpp import Llama
+from langchain_community.llms import LlamaCpp
+from langchain.prompts import PromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from utils.output_structures import SummaryList
+import os
+
+
+class ModelHandler:
+    def __init__(self):
+        self.model_path = os.getenv("MISTRAL_GGUF_PATH", "./models/mistral.gguf")
+
+        self.llm = LlamaCpp(
+            model_path=self.model_path,
+            n_ctx=4096,
+            temperature=0.5,
+            top_p=0.9,
+            max_tokens=100,
+            repeat_penalty=1.2,
+            n_threads=8  # adjust based on CPU
+        )
+
+        self._init_output_parser()
+        self._init_prompt()
+        self.chain = self.prompt | self.llm
+
+    def _determine_max_tokens(self, question: str) -> int:
+        from textstat import flesch_reading_ease
+        complexity_score = flesch_reading_ease(question)
+        if complexity_score > 60:
+            return 300
+        elif complexity_score > 40:
+            return 800
+        elif complexity_score > 20:
+            return 900
+        elif complexity_score > 10:
+            return 1100
+        elif complexity_score > 5:
+            return 1500
+
+    def _update_pipeline(self, message_history) -> None:
+        max_tokens = self._determine_max_tokens(message_history)
+        self.llm.max_tokens = max_tokens
+        self.chain = self.prompt | self.llm
+        print(f"Max tokens updated to: {max_tokens}")
+
+    def _init_prompt(self) -> None:
+        format_instructions = self.output_parser.get_format_instructions()
+        self.prompt = PromptTemplate(
+            template=(
+                """<s>[INST]
+                You are a summarization assistant. Summarize each user's main points and sentiment.
+
+                If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
+                Do NOT try to describe or interpret links.
+
+                Summarize each user's main points and attitude in 1-2 sentences.
+                Provide ONLY ONE summary per user.
+                Output only real JSON instances. Never add a Top level summaries key. Always wrap the summaries in a list.
+                Adhere strictly to the formatting instructions:
+                {format_instructions}
+
+                Message history:
+                {message_history}
+
+                [/INST]"""
+            ),
+            input_variables=["message_history"],
+            partial_variables={"format_instructions": format_instructions},
+        )
+
+    def _init_output_parser(self) -> None:
+        self.output_parser = PydanticOutputParser(pydantic_object=SummaryList)
+        print("Format instructions:\n", self.output_parser.get_format_instructions())
+
+    def generate_response(self, message_history: List) -> str:
+        self._update_pipeline(message_history=message_history)
+        return self.chain.invoke({"message_history": message_history})
 
 
 class ModelHandler:
