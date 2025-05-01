@@ -5,6 +5,7 @@ FROM python@sha256:65c843653048a3ba22c8d5083a022f44aef774974f0f7f70cbf8cee4e931a
 RUN apt-get update && apt-get install -y curl build-essential pkg-config libssl-dev && \
     curl https://sh.rustup.rs -sSf | sh -s -- -y && \
     . "$HOME/.cargo/env"
+
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app
@@ -28,7 +29,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean &&\
     rm -rf /var/lib/apt/lists/*
 
-
 RUN pip install -r /app/python_llm/requirements.txt
+
+RUN --mount=type=secret,id=hf_token,mode=0444 \
+    HUGGINGFACE_TOKEN=$(cat /run/secrets/hf_token) && \
+    python3 -c "\
+from transformers import AutoModelForCausalLM, AutoTokenizer; \
+AutoModelForCausalLM.from_pretrained('mistralai/Mistral-7B-Instruct-v0.3', token='$HUGGINGFACE_TOKEN'); \
+AutoTokenizer.from_pretrained('mistralai/Mistral-7B-Instruct-v0.3', token='$HUGGINGFACE_TOKEN')"
+
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface/transformers
 
 CMD ["./bot"]
