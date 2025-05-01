@@ -9,13 +9,10 @@ use serenity::prelude::*;
 use std::env;
 
 // !NEXT STEPS:
-// TODO: Add dynamic max token scaling w/ number of messages sent in the day.
-// Need way to format output json so that it doesn't cut off mid structure
-// TODO: Add context window check mechanism
+// TODO: Explicit download and install of local model & pre-load checkpoint shards in dockerfile
 // TODO: Add logging and debugging logs for rust & python, esp to see model responses
-// TODO: Containerize & Explicit download and install of local model & pre-load checkpoint shards
-// TODO: Trial run
-// TODO: Deploy, tbd where.
+// TODO: Add context window check mechanism
+// TODO: Deploy, tbd where (EC2)
 
 // !Testing Notes:
 // TODO: Add timezone corrections so UTC timezone difference doesn't include yesterday's msgs

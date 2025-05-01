@@ -11,6 +11,7 @@ use serenity::model::channel::Reaction;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::ReactionType;
 use serenity::prelude::*;
+use serenity::all::Channel;
 use std::collections::HashMap;
 pub struct Handler;
 
@@ -34,6 +35,18 @@ impl EventHandler for Handler {
                     .message(&ctx.http, reaction.message_id)
                     .await
                 {
+                    let mut channel_name = String::new();
+                    if let Ok(channel) = _msg.channel_id.to_channel(&ctx.http).await {
+                        if let Channel::Guild(guild_channel) = channel {
+                            println!("Channel name: {}", guild_channel.name);
+                            channel_name = guild_channel.name;
+                        } else {
+                            println!("Not a guild channel.");
+                        }
+                    } else {
+                            println!("Failed to fetch channel.");
+                    }
+
                     let start_of_today = get_start_of_today();
                     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
                     let message_getter = GetMessages::new().limit(100);
@@ -66,7 +79,7 @@ impl EventHandler for Handler {
                                 return;
                             }
                         };
-                        let message_to_user = format_json_to_message(&model_response);
+                        let message_to_user = format_json_to_message(&model_response,&channel_name);
                         dm = CreateMessage::new().content(&message_to_user);
                     } else {
                         dm = CreateMessage::new().content("No messages found to summarize...");

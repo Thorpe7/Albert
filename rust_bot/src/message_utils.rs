@@ -1,4 +1,4 @@
-use crate::read_and_write::Summaries;
+use crate::read_and_write::Summary;
 use serde::Serialize;
 use std::collections::HashMap;
 use time::{Date, OffsetDateTime, Time};
@@ -25,11 +25,11 @@ pub fn string_format_today_messages(messages_today: &Vec<HashMap<String, String>
         .join("\n")
 }
 
-pub fn format_json_to_message(json_data: &Summaries) -> String {
-    json_data
-        .summaries
+pub fn format_json_to_message(json_data: &Vec<Summary>, channel_name: &String) -> String {
+    let message_str = json_data
         .iter()
-        .map(|s| format!("**{}**: {}", s.author, s.summary))
+        .map(|s| format!("**{}**:\n\t{}", s.author, s.summary))
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    format!("**Channel: **{}\n{}", channel_name, message_str)
 }
