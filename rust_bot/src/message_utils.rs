@@ -25,11 +25,14 @@ pub fn string_format_today_messages(messages_today: &Vec<HashMap<String, String>
         .join("\n")
 }
 
-pub fn format_json_to_message(json_data: &Vec<Summary>, channel_name: &String) -> String {
-    let message_str = json_data
-        .iter()
-        .map(|s| format!("**{}**:\n\t{}", s.author, s.summary))
-        .collect::<Vec<_>>()
-        .join("\n");
+pub fn format_json_to_message(json_data: &HashMap<String,String>, channel_name: &String) -> String {
+    let message_str = match json_data.get("summary") {
+        Some(val) => val,
+        None => {
+            println!("Summary not found...");
+            return String::from("No summary available...");
+        }
+    };
+
     format!("**Channel: **{}\n{}", channel_name, message_str)
 }

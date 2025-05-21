@@ -14,7 +14,7 @@ from langchain_huggingface.llms import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 
-from utils.output_structures import SummaryList
+from utils.output_structures import Summary
 
 load_dotenv()
 
@@ -107,14 +107,13 @@ class ModelHandler:
         self.prompt = PromptTemplate(
             template=(
                 """<s>[INST]
-                You are a summarization assistant. Summarize each user's main points and sentiment.
+                You are a summarization assistant. Summarize the main points discussed and the general sentiment towards the topics.
 
                 If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
                 Do NOT try to describe or interpret links.
 
-                Summarize each user's main points and attitude in 1-2 sentences.
-                Provide ONLY ONE summary per user.
-                Output only real JSON instances. Never add a Top level summaries key. Always wrap the summaries in a list.
+                Provide ONLY the summary.
+                Output only real JSON instances. 
                 Adhere strictly to the formatting instructions:
                 {format_instructions}
 
@@ -130,7 +129,7 @@ class ModelHandler:
     def _init_output_parser(
         self,
     ) -> None:
-        self.output_parser = PydanticOutputParser(pydantic_object=SummaryList)
+        self.output_parser = PydanticOutputParser(pydantic_object=Summary)
         print(
             f"Formatting instructions for model appear as: \n{self.output_parser.get_format_instructions()}"
         )

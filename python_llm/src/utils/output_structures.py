@@ -1,18 +1,14 @@
 import json
-from typing import List
-from pydantic import BaseModel, Field, RootModel
+from typing import Any
+from pydantic import BaseModel, Field
 
 
-class UserSummary(BaseModel):
-    author: str = Field(description="The name of the user")
-    summary: str = Field(description="A 1-2 sentence summary of what the user said")
+class Summary(BaseModel):
+    summary: str = Field(description="A summary of what the users discussed")
 
 
-class SummaryList(RootModel[List[UserSummary]]):
-    pass
 
-
-def clean_model_output(output: str) -> dict:
+def clean_model_output(output: str) -> Any:
     cleaned_output = output.strip().strip("```")
     print("cleaned output:", "\n", cleaned_output)
     return json.loads(cleaned_output)

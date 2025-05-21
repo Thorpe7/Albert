@@ -5,11 +5,12 @@ use serde_json::to_string_pretty;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 pub struct Summary {
-    pub author: String,
     pub summary: String,
+    pub content: String,
 }
 
 pub fn write_messages_to_json(messages: &Vec<ChatMessage>) {
@@ -29,10 +30,10 @@ pub fn write_messages_to_txt(messages: &String) {
         .expect("Failed to write to 'chat_history.txt...");
 }
 
-pub fn read_json(file_path: Option<&str>) -> Result<Vec<Summary>, Box<dyn std::error::Error>> {
+pub fn read_json(file_path: Option<&str>) -> Result<HashMap<String,String>, Box<dyn std::error::Error>> {
     let file_path = file_path.unwrap_or("model_response.json");
     let data = fs::read_to_string(&file_path)?;
-    let model_response: Vec<Summary> = serde_json::from_str(&data)?;
+    let model_response: HashMap<String,String> = serde_json::from_str(&data)?;
     println!("{:?}", model_response);
     Ok(model_response)
 }
