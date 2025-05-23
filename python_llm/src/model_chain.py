@@ -1,6 +1,6 @@
 import os
 import torch
-import textstat
+
 
 from dotenv import load_dotenv
 from typing import List
@@ -13,7 +13,7 @@ from transformers import (
 from langchain_huggingface.llms import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
-
+from textstat import textstat
 from utils.output_structures import Summary
 
 load_dotenv()
@@ -77,6 +77,8 @@ class ModelHandler:
             return 1100
         elif complexity_score > 5:
             return 1500  # Complex
+        
+        return 300
 
     def _update_pipeline(self, message_history) -> None:
         max_new_tokens = self._determine_max_tokens(message_history)
@@ -113,7 +115,7 @@ class ModelHandler:
                 Do NOT try to describe or interpret links.
 
                 Provide ONLY the summary.
-                Output only real JSON instances. 
+                Output only real JSON instances.
                 Adhere strictly to the formatting instructions:
                 {format_instructions}
 
@@ -134,7 +136,7 @@ class ModelHandler:
             f"Formatting instructions for model appear as: \n{self.output_parser.get_format_instructions()}"
         )
 
-    def generate_response(self, message_history: List) -> str:
+    def generate_response(self, message_history: str) -> str:
         """Runs model pipeline & returns response."""
         self._update_pipeline(message_history=message_history)
         response = self.chain.invoke({"message_history": {message_history}})
