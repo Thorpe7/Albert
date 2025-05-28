@@ -114,7 +114,6 @@ class ModelHandler:
                 If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
                 Do NOT try to describe or interpret links.
 
-                Provide ONLY the summary.
                 Output only real JSON instances.
                 Adhere strictly to the formatting instructions:
                 {format_instructions}

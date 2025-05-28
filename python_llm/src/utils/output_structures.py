@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class Summary(BaseModel):
-    summary: str = Field(description="A summary of what the users discussed")
+    summary: str 
 
 def clean_model_output(output: str) -> Any:
     cleaned_output = output.strip().strip("```")
