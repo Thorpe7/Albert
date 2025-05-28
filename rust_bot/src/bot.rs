@@ -70,7 +70,7 @@ impl EventHandler for Handler {
                     if messages_today.len() > 1 {
                         let formatted_messages: String =
                             string_format_today_messages(&messages_today);
-                        write_messages_to_txt(&formatted_messages);
+                        let filepath = write_messages_to_txt(&formatted_messages);
                         run_python();
                         let model_response = match read_json(None) {
                             Ok(data) => data,

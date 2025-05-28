@@ -13,7 +13,7 @@ pub struct ModelResponse {
     summaries: Vec<Summary>,
 }
 
-pub fn run_python() {
+pub fn run_python(filepath: &String) {
     if let Ok(status) = Command::new("python")
         .arg("python_llm/src/main.py")
         .status()
