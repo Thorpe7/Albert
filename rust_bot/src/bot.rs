@@ -15,16 +15,12 @@ use serenity::all::Channel;
 use std::collections::HashMap;
 pub struct Handler;
 
+// Handler struct for message event - called when new message is received.
 #[async_trait]
 impl EventHandler for Handler {
-    // Handler struct for message event - called when new message is received.
-
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!ping" {
-            if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
-                println!("Error sending message: {why:?}");
-            }
-        }
+    
+    async fn ready(&self, _: Context, ready: Ready) {
+        println!("{} is connected!", ready.user.name)
     }
 
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
@@ -35,6 +31,7 @@ impl EventHandler for Handler {
                     .message(&ctx.http, reaction.message_id)
                     .await
                 {
+                    // Todo: async fn get_channel_name
                     let mut channel_name = String::new();
                     if let Ok(channel) = _msg.channel_id.to_channel(&ctx.http).await {
                         if let Channel::Guild(guild_channel) = channel {
@@ -47,6 +44,7 @@ impl EventHandler for Handler {
                             println!("Failed to fetch channel.");
                     }
 
+                    // Todo: async fn get_today_channel_hx
                     let start_of_today = get_start_of_today();
                     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
                     let message_getter = GetMessages::new().limit(100);
@@ -66,6 +64,7 @@ impl EventHandler for Handler {
                             }
                         }
                     }
+                    // Todo: async fn create_message
                     let dm: CreateMessage;
                     if messages_today.len() > 1 {
                         let formatted_messages: String =
@@ -100,10 +99,9 @@ impl EventHandler for Handler {
                     }
                 }
             }
+            if emoji == "📖" {
+                // Nothing yet
+            }
         }
-    }
-
-    async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name)
     }
 }
