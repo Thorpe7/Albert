@@ -1,7 +1,9 @@
 use crate::read_and_write::Summary;
 use serde::Serialize;
+use serenity::all::ComponentInteractionData;
 use std::collections::HashMap;
-use time::{Date, OffsetDateTime, Time};
+use time::{convert::Hour, error::ComponentRange, Date, OffsetDateTime, Time, UtcOffset};
+use std::io::Error;
 
 #[derive(Serialize)]
 pub struct ChatMessage {
@@ -9,10 +11,11 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-pub fn get_start_of_today() -> time::OffsetDateTime {
-    let now = OffsetDateTime::now_utc();
+pub fn get_start_of_today() -> Result<time::OffsetDateTime, time::error::ComponentRange>  {
+    let local_offset = UtcOffset::from_hms(-6, 0, 0)?;
+    let now = OffsetDateTime::now_utc().to_offset(local_offset);
     let today = Date::from_calendar_date(now.year(), now.month(), now.day()).unwrap();
-    today.with_time(Time::MIDNIGHT).assume_utc()
+    Ok(today.with_time(Time::MIDNIGHT).assume_utc())
 }
 
 pub fn string_format_today_messages(messages_today: &Vec<HashMap<String, String>>) -> String {

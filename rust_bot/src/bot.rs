@@ -6,7 +6,6 @@ use crate::read_and_write::{read_json, write_messages_to_txt};
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
 use serenity::builder::GetMessages;
-use serenity::model::channel::Message;
 use serenity::model::channel::Reaction;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::ReactionType;
@@ -18,12 +17,12 @@ pub struct Handler;
 // Handler struct for message event - called when new message is received.
 #[async_trait]
 impl EventHandler for Handler {
-    
+
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name)
     }
 
-    async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
+    async fn reaction_add(&self, ctx: Context, reaction: Reaction) { // serenity::model::channel::Reaction - no timestamp field
         if let ReactionType::Unicode(ref emoji) = reaction.emoji {
             if emoji == "🤖" {
                 if let Ok(_msg) = reaction
@@ -32,6 +31,7 @@ impl EventHandler for Handler {
                     .await
                 {
                     // Todo: async fn get_channel_name
+                    // Grab the channel name & make sure its valid
                     let mut channel_name = String::new();
                     if let Ok(channel) = _msg.channel_id.to_channel(&ctx.http).await {
                         if let Channel::Guild(guild_channel) = channel {
@@ -45,15 +45,17 @@ impl EventHandler for Handler {
                     }
 
                     // Todo: async fn get_today_channel_hx
+                    //! Implement error handling from get_start_of_today
+                    // Grab the time, only want to summarize messages from today to start
                     let start_of_today = get_start_of_today();
                     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
-                    let message_getter = GetMessages::new().limit(100);
-                    let result_history = reaction
+                    let message_getter = GetMessages::new().limit(100); // CURRENT MSG HX LIMIT CAP 100 MSGS
+                    let history_result = reaction
                         .channel_id
                         .messages(&ctx.http, message_getter)
                         .await;
 
-                    if let Ok(history) = result_history {
+                    if let Ok(history) = history_result {
                         for chat in history.iter() {
                             if chat.timestamp.to_utc() >= start_of_today {
                                 println!("{}", chat.timestamp.to_utc());
