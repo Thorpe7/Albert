@@ -8,7 +8,7 @@ use dotenv::dotenv;
 use serenity::prelude::*;
 use std::env;
 
-// !NEXT STEPS:
+// !NEXT STEPS: COULD NOT PUT TWO EMOTES AND GET MESSAGE FOR BOTH IN SEQUENCE
 // TODO: Explicit download and install of local model & pre-load checkpoint shards in dockerfile
 // TODO: Add logging and debugging logs for rust & python, esp to see model responses
 // TODO: Add context window check mechanism
