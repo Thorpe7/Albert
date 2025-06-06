@@ -36,7 +36,7 @@ impl EventHandler for Handler {
                     // Grab the time, only want to summarize messages from today to start
                     let (start_of_today, history_result) = get_today_channel_hx(&reaction, &ctx).await;
                     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
-                    
+
                     // Filtering today's messages
                     if let Ok(history) = history_result {
                         for chat in history.iter() {
@@ -49,12 +49,12 @@ impl EventHandler for Handler {
                             }
                         }
                     }
-                    
+
                     // ToDo: Still a little messy, can be more concise
                     let dm: CreateMessage;
                     if messages_today.len() > 1 {
                         let result_filepath = write_messages_to_txt(&messages_today);
-                        if let Ok(filepath) = result_filepath { 
+                        if let Ok(filepath) = result_filepath {
                             run_python(&filepath);
                         }
                         let model_response = match read_json(None) {
