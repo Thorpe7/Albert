@@ -1,20 +1,20 @@
 use crate::message_utils::{
-    format_json_to_message, get_start_of_today, string_format_today_messages,
+format_json_to_message, get_today_channel_hx, get_channel_name, send_dm_to_user
 };
 use crate::python_runner::run_python;
 use crate::read_and_write::{read_json, write_messages_to_txt};
 use serenity::async_trait;
 use serenity::builder::CreateMessage;
-use serenity::builder::GetMessages;
 use serenity::model::channel::Reaction;
 use serenity::model::gateway::Ready;
 use serenity::model::prelude::ReactionType;
 use serenity::prelude::*;
-use serenity::all::Channel;
 use std::collections::HashMap;
 pub struct Handler;
 
 // Handler struct for message event - called when new message is received.
+// ToDo1: Create worker queue
+// ToDo2: Fix timezone...
 #[async_trait]
 impl EventHandler for Handler {
 
@@ -30,31 +30,14 @@ impl EventHandler for Handler {
                     .message(&ctx.http, reaction.message_id)
                     .await
                 {
-                    // Todo: async fn get_channel_name
                     // Grab the channel name & make sure its valid
-                    let mut channel_name = String::new();
-                    if let Ok(channel) = _msg.channel_id.to_channel(&ctx.http).await {
-                        if let Channel::Guild(guild_channel) = channel {
-                            println!("Channel name: {}", guild_channel.name);
-                            channel_name = guild_channel.name;
-                        } else {
-                            println!("Not a guild channel.");
-                        }
-                    } else {
-                            println!("Failed to fetch channel.");
-                    }
+                    let channel_name = get_channel_name(_msg, &ctx).await.unwrap();
 
-                    // Todo: async fn get_today_channel_hx
-                    //! Implement error handling from get_start_of_today
                     // Grab the time, only want to summarize messages from today to start
-                    let start_of_today = get_start_of_today();
+                    let (start_of_today, history_result) = get_today_channel_hx(&reaction, &ctx).await;
                     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
-                    let message_getter = GetMessages::new().limit(100); // CURRENT MSG HX LIMIT CAP 100 MSGS
-                    let history_result = reaction
-                        .channel_id
-                        .messages(&ctx.http, message_getter)
-                        .await;
-
+                    
+                    // Filtering today's messages
                     if let Ok(history) = history_result {
                         for chat in history.iter() {
                             if chat.timestamp.to_utc() >= start_of_today {
@@ -66,13 +49,12 @@ impl EventHandler for Handler {
                             }
                         }
                     }
-                    // Todo: async fn create_message
+                    
+                    // ToDo: Still a little messy, can be more concise
                     let dm: CreateMessage;
                     if messages_today.len() > 1 {
-                        let formatted_messages: String =
-                            string_format_today_messages(&messages_today);
-                        let result_filepath = write_messages_to_txt(&formatted_messages);
-                        if let Ok(filepath) = result_filepath {
+                        let result_filepath = write_messages_to_txt(&messages_today);
+                        if let Ok(filepath) = result_filepath { 
                             run_python(&filepath);
                         }
                         let model_response = match read_json(None) {
@@ -88,17 +70,9 @@ impl EventHandler for Handler {
                         dm = CreateMessage::new().content("No messages found to summarize...");
                     }
 
-                    if let Some(user_id) = reaction.user_id {
-                        if let Ok(user) = user_id.to_user(&ctx.http).await {
-                            if let Err(why) = user.direct_message(&ctx.http, dm).await {
-                                println!("Failed to send dm to user: {why:?}")
-                            }
-                        } else {
-                            println!("Failed to fetch user from user_id...")
-                        }
-                    } else {
-                        println!("No user_id on reaction...");
-                    }
+                    if let Err(e) = send_dm_to_user(&reaction, &ctx, dm).await{
+                        println!("Failed to DM: {:?}", e);
+                    };
                 }
             }
             if emoji == "📖" {

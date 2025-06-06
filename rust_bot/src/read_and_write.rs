@@ -1,4 +1,4 @@
-use crate::message_utils::ChatMessage;
+use crate::message_utils::{ChatMessage,string_format_today_messages};
 use serde::Deserialize;
 use serde_json;
 use serde_json::to_string_pretty;
@@ -23,12 +23,13 @@ pub fn write_messages_to_json(messages: &Vec<ChatMessage>) {
         .expect("Failed to write to 'chat_history.json'...");
 }
 
-pub fn write_messages_to_txt(messages: &String) -> Result<String,std::io::Error>{
+pub fn write_messages_to_txt(messages_today: &Vec<HashMap<String, String>>) -> Result<String,std::io::Error>{
 
+    let formatted_messages: String = string_format_today_messages(&messages_today); 
     let id = Uuid::new_v4().to_string();
     let filepath = format!("/tmp/input_{id}.txt");
     let mut output_file = File::create(&filepath).expect("Failed to create output file...");
-    output_file.write_all(messages.as_bytes())?;
+    output_file.write_all(formatted_messages.as_bytes())?;
     Ok(filepath.to_string())
 }
 
