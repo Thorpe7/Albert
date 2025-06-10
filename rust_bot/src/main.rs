@@ -1,12 +1,16 @@
-mod bot;
+mod handle_events;
 mod message_utils;
 mod python_runner;
 mod read_and_write;
+mod worker_and_job;
+mod bot_functions;
 
-use bot::Handler;
+use handle_events::Handler;
 use dotenv::dotenv;
 use serenity::prelude::*;
 use std::env;
+use tokio::sync::mpsc;
+use crate::worker_and_job::{start_worker, Job};
 
 // !NEXT STEPS:
 // TODO: Explicit download and install of local model & pre-load checkpoint shards in dockerfile
@@ -30,10 +34,14 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MESSAGE_REACTIONS;
 
+    let (tx, rx) = mpsc::channel::<Job>(32);
+    let handler = Handler{tx};
+    start_worker(rx);
+
     // Create a new instance of the Client, logging in as a bot. This will automatically prepend
     // your bot token with "Bot ", which is a requirement by Discord for bot users.
     let mut client = Client::builder(&discord_token, intents)
-        .event_handler(Handler)
+        .event_handler(handler)
         .await
         .expect("Err creating client");
 
