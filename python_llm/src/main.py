@@ -1,12 +1,17 @@
 """Main script for python LLM of Albert"""
 
 import json
+import argparse
 from model_chain import ModelHandler
 from utils.output_structures import clean_model_output
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Inputs to python llm model")
+    parser.add_argument("input_file_path", help="String file path of input file")
+    args = parser.parse_args()
     TestHandler = ModelHandler()
-    with open("chat_history.txt", "r") as fp:
+    
+    with open(args.input_file_path, "r") as fp:
         messages = fp.readlines()
         message_history = "".join(messages)
 

@@ -5,6 +5,7 @@ use serenity::model::gateway::Ready;
 use serenity::model::prelude::ReactionType;
 use serenity::prelude::*;
 use tokio::sync::mpsc::Sender;
+use uuid::Uuid;
 use crate::worker_and_job::Job;
 pub struct Handler {
     pub tx: Sender<Job>
@@ -29,7 +30,7 @@ impl EventHandler for Handler {
                     .channel_id
                     .message(&ctx.http, reaction.message_id)
                     .await{
-                        let job = Job::SummarizeChat { msg: _msg, ctx: ctx, reaction: reaction };
+                        let job = Job::SummarizeChat { uuid: Uuid::new_v4(), msg: _msg, ctx: ctx, reaction: reaction };
                         self.tx.send(job).await.unwrap();
                     }
                 }

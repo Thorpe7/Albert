@@ -4,6 +4,7 @@ use serenity::builder::CreateMessage;
 use serenity::builder::GetMessages;
 use serenity::client::Context;
 use serenity::model::channel::Reaction;
+use uuid::Uuid;
 
 use crate::message_utils::{
     format_json_to_message, get_start_of_today, string_format_today_messages,
@@ -12,7 +13,7 @@ use crate::python_runner::run_python;
 use crate::read_and_write::{read_json, write_messages_to_txt};
 
 
-pub async fn summarize_chat(msg:Message, ctx: &Context, reaction: Reaction) {       
+pub async fn summarize_chat(file_id:Uuid, msg:Message, ctx: &Context, reaction: Reaction) {       
         let mut channel_name = String::new();
         if let Ok(channel) = msg.channel_id.to_channel(&ctx.http).await {
             if let Channel::Guild(guild_channel) = channel {
@@ -48,8 +49,8 @@ pub async fn summarize_chat(msg:Message, ctx: &Context, reaction: Reaction) {
         if messages_today.len() > 1 {
             let formatted_messages: String =
                 string_format_today_messages(&messages_today);
-            write_messages_to_txt(&formatted_messages);
-            run_python();
+            let msg_hx_path = write_messages_to_txt(&formatted_messages, &file_id);
+            run_python(&msg_hx_path).await;
             let model_response = match read_json(None) {
                 Ok(data) => data,
                 Err(e) => {

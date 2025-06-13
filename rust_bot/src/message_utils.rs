@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use time::{Date, OffsetDateTime, Time};
+use time::{Date, OffsetDateTime, Time, UtcOffset};
 
 #[derive(Serialize)]
 pub struct ChatMessage {
@@ -9,9 +9,10 @@ pub struct ChatMessage {
 }
 
 pub fn get_start_of_today() -> time::OffsetDateTime {
-    let now = OffsetDateTime::now_utc();
+    let pt_offset = UtcOffset::from_hms(-8, 0, 0).unwrap();
+    let now = OffsetDateTime::now_utc().to_offset(pt_offset);
     let today = Date::from_calendar_date(now.year(), now.month(), now.day()).unwrap();
-    today.with_time(Time::MIDNIGHT).assume_utc()
+    today.with_time(Time::MIDNIGHT).assume_offset(pt_offset)
 }
 
 pub fn string_format_today_messages(messages_today: &Vec<HashMap<String, String>>) -> String {
