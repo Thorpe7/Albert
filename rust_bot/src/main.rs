@@ -13,14 +13,11 @@ use tokio::sync::mpsc;
 use crate::worker_and_job::{start_worker, Job};
 
 // !NEXT STEPS:
-// TODO: Explicit download and install of local model & pre-load checkpoint shards in dockerfile
 // TODO: Add logging and debugging logs for rust & python, esp to see model responses
 // TODO: Add context window check mechanism
-// TODO: Deploy, tbd where (EC2)
-
-// !Testing Notes:
-// TODO: Add timezone corrections so UTC timezone difference doesn't include yesterday's msgs
-// TODO: Check that summarization works multiple times in a row and doesn't just respond with "No messages to summarize".
+// TODO: Cache recent summaries w/ last message datetime check
+// TODO: Summary broken down by user
+// TODO: Summarize article
 
 #[tokio::main]
 async fn main() {
