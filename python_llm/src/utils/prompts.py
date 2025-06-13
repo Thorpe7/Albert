@@ -34,7 +34,7 @@ TASK_PROMPTS = {
             template=(
                 """<s>[INST]
                 You are a summarization assistant.
-                Summarize the main points discussed from each user specifying who said what. 
+                Summarize the main points discussed. Always specify who said what.
                 Summaries should be detailed and descriptive and highlight overall sentiment or themes. 
 
                 If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
