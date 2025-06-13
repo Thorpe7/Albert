@@ -19,5 +19,6 @@ if __name__ == "__main__":
     print("initial response:", "\n", response, "\n")
     cleaned_response = clean_model_output(response)
 
-    with open("model_response.json", "w") as out_file:
+    dir_id = args.input_file_path.split("/")[0]
+    with open(f"{dir_id}/model_response.json", "w") as out_file:
         json.dump(cleaned_response, out_file)

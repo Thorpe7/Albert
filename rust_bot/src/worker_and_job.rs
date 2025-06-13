@@ -25,11 +25,16 @@ pub fn start_worker(mut rx: Receiver<Job>) {
         while let Some(job) = rx.recv().await {
             match job {
                 Job::SummarizeChat { uuid, msg, ctx, reaction } => {
-                    summarize_chat(uuid, msg, &ctx, reaction).await;
-
-                    let dir_path = format!("{}", uuid);
-                    if let Err(e) = fs::remove_dir_all(&dir_path) {
-                        eprintln!("Failed to delete job folder {}: {}", dir_path, e);
+                    match summarize_chat(uuid, msg, &ctx, reaction).await {
+                        Ok(_) => {
+                            let dir_path = format!("{}", uuid);
+                            if let Err(e) = fs::remove_dir_all(&dir_path) {
+                                eprintln!("Failed to delete job folder {}: {}", dir_path, e);
+                            }
+                        },
+                        Err(e) => {
+                            eprint!("Summarizing failed: {}",e);
+                        }
                     }
                 }
             }

@@ -23,8 +23,8 @@ pub fn write_messages_to_txt(messages: &String, file_id: &Uuid ) -> String {
     msg_hx_path
 }
 
-pub fn read_json(file_path: Option<&str>) -> Result<HashMap<String,String>, Box<dyn std::error::Error>> {
-    let file_path = file_path.unwrap_or("model_response.json");
+pub fn read_json(file_path: &str) -> Result<HashMap<String,String>, Box<dyn std::error::Error>> {
+    // let file_path = file_path.to_string();
     let data = fs::read_to_string(&file_path)?;
     let model_response: HashMap<String,String> = serde_json::from_str(&data)?;
     // println!("{:?}", model_response);

@@ -85,8 +85,8 @@ class ModelHandler:
             model=self.model,
             tokenizer=self.tokenizer,
             max_new_tokens=max_new_tokens,
-            temperature=0.5,
-            top_p=0.9,
+            temperature=0.7,
+            top_p=1.0,
             device_map="auto",
             repetition_penalty=1.2,
             do_sample=True,
@@ -106,7 +106,11 @@ class ModelHandler:
         self.prompt = PromptTemplate(
             template=(
                 """<s>[INST]
-                You are a summarization assistant. Summarize the main points discussed and the general sentiment towards the topics.
+                You are a summarization assistant.
+                Summarize the main points discussed in a detailed and descriptive manner.
+                If a particularly good point is made by a user, include what that user said. 
+                Include relevant user concerns, specific examples mentioned, and highlight overall sentiment or themes. 
+                Aim for a comprehensive and thoughtful summary with depth.
 
                 If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
                 Do NOT try to describe or interpret links.
@@ -132,5 +136,6 @@ class ModelHandler:
     def generate_response(self, message_history: str) -> str:
         """Runs model pipeline & returns response."""
         self._update_pipeline(message_history=message_history)
+        print(self.pipeline._forward_params)
         response = self.chain.invoke({"message_history": {message_history}})
         return response
