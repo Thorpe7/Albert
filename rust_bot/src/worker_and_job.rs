@@ -12,7 +12,8 @@ pub enum Job {
         uuid: Uuid,
         msg: Message,
         ctx: Context,
-        reaction: Reaction
+        reaction: Reaction,
+        task_prompt: String
     },
     // SummarizeArticle {
     //     For the next bot feature
@@ -24,8 +25,8 @@ pub fn start_worker(mut rx: Receiver<Job>) {
     tokio::spawn(async move {
         while let Some(job) = rx.recv().await {
             match job {
-                Job::SummarizeChat { uuid, msg, ctx, reaction } => {
-                    match summarize_chat(uuid, msg, &ctx, reaction).await {
+                Job::SummarizeChat { uuid, msg, ctx, reaction, task_prompt } => {
+                    match summarize_chat(uuid, msg, &ctx, reaction, task_prompt).await {
                         Ok(_) => {
                             let dir_path = format!("{}", uuid);
                             if let Err(e) = fs::remove_dir_all(&dir_path) {

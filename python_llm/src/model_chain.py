@@ -14,12 +14,13 @@ from langchain.prompts import PromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from textstat import textstat
 from utils.output_structures import Summary
+from utils.prompts import TASK_PROMPTS
 
 load_dotenv()
 
 
 class ModelHandler:
-    def __init__(self):
+    def __init__(self, task_prompt:str):
 
         quant_config = BitsAndBytesConfig(
             load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
@@ -59,8 +60,11 @@ class ModelHandler:
         )
         self.llm = HuggingFacePipeline(pipeline=self.pipeline)
         self._init_output_parser()
-        self._init_prompt()
-        self.chain = self.prompt | self.llm
+        self._init_prompt(task_prompt=task_prompt)
+        if self.prompt: 
+            self.chain = self.prompt | self.llm
+        else:
+            raise ValueError(f"Prompt for task ({task_prompt}) not found...")
 
     def _determine_max_tokens(self, question: str) -> int:
         """Use textstat to evaluate complexity of user query for max tokens."""
@@ -96,37 +100,16 @@ class ModelHandler:
         )
 
         self.llm = HuggingFacePipeline(pipeline=self.pipeline)
-        self.chain = self.prompt | self.llm
+        if self.prompt: 
+            self.chain = self.prompt | self.llm
         print(f"Max New Tokens updated to: \n{max_new_tokens}")
 
-    def _init_prompt(
-        self,
-    ) -> None:
+    def _init_prompt(self, task_prompt: str) -> None:
         """Initializes the prompt to be used by the model."""
-        self.prompt = PromptTemplate(
-            template=(
-                """<s>[INST]
-                You are a summarization assistant.
-                Summarize the main points discussed in a detailed and descriptive manner.
-                If a particularly good point is made by a user, include what that user said. 
-                Include relevant user concerns, specific examples mentioned, and highlight overall sentiment or themes. 
-                Aim for a comprehensive and thoughtful summary with depth.
-
-                If a message only contains a link, image, or GIF, summarize it as "[User shared a link]" or skip it if irrelevant.
-                Do NOT try to describe or interpret links.
-
-                Provide ONLY the summary.
-                Output only real JSON instances. 
-                Adhere strictly to the output schema:
-                ```
-                {{ "summary": "<summary of the discussion>" }}
-                ```
-                Message history:
-                {message_history}
-                [/INST]"""
-            ),
-            input_variables=["message_history"],
-        )
+        if TASK_PROMPTS.get(task_prompt):
+            self.prompt = TASK_PROMPTS.get(task_prompt)
+        else:
+            self.prompt = None
 
     def _init_output_parser(
         self,

@@ -25,15 +25,26 @@ impl EventHandler for Handler {
 
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
         if let ReactionType::Unicode(ref emoji) = reaction.emoji {
-            if emoji == "🤖" {
+            if emoji == "📄" {
+                if let Ok(_msg) = reaction
+                    .channel_id
+                    .message(&ctx.http, &reaction.message_id)
+                    .await{
+                        let task_prompt = "STANDARD_SUMMARY".to_string();
+                        let job = Job::SummarizeChat { uuid: Uuid::new_v4(), msg: _msg, ctx: ctx, reaction: reaction, task_prompt: task_prompt };
+                        self.tx.send(job).await.unwrap();
+                    }
+                }
+            else if emoji == "📑" {
                 if let Ok(_msg) = reaction
                     .channel_id
                     .message(&ctx.http, reaction.message_id)
                     .await{
-                        let job = Job::SummarizeChat { uuid: Uuid::new_v4(), msg: _msg, ctx: ctx, reaction: reaction };
+                        let task_prompt = "PER_USER_SUMMARY".to_string();
+                        let job = Job::SummarizeChat { uuid: Uuid::new_v4(), msg: _msg, ctx: ctx, reaction: reaction, task_prompt: task_prompt };
                         self.tx.send(job).await.unwrap();
-                    }
                 }
+            }
         }
     }
 

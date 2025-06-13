@@ -12,7 +12,7 @@ use crate::python_runner::run_python;
 use crate::read_and_write::{read_json, write_messages_to_txt};
 
 
-pub async fn summarize_chat(file_id:Uuid, msg:Message, ctx: &Context, reaction: Reaction) -> Result<()>{
+pub async fn summarize_chat(file_id:Uuid, msg:Message, ctx: &Context, reaction: Reaction, task_prompt: String) -> Result<()>{
     let (channel_name, response_path) = get_channel_name(file_id, msg, &ctx).await.unwrap();
     let messages_today = get_messages(&reaction, &ctx).await;
     
@@ -21,7 +21,7 @@ pub async fn summarize_chat(file_id:Uuid, msg:Message, ctx: &Context, reaction: 
     if messages_today.len() > 1 {
         let formatted_messages: String = string_format_today_messages(&messages_today);
         let msg_hx_path = write_messages_to_txt(&formatted_messages, &file_id);
-        if let Err(e) = run_python(&msg_hx_path).await {
+        if let Err(e) = run_python(&msg_hx_path, &task_prompt).await {
             return Err(anyhow::anyhow!("Running python script failed: {}",e));
         }
         let model_response = match read_json(&response_path) {

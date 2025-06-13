@@ -8,8 +8,9 @@ from utils.output_structures import clean_model_output
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Inputs to python llm model")
     parser.add_argument("input_file_path", help="String file path of input file")
+    parser.add_argument("task_prompt", help="The prompt to be used for the kicked off Discord event")
     args = parser.parse_args()
-    TestHandler = ModelHandler()
+    TestHandler = ModelHandler(task_prompt=args.task_prompt)
     
     with open(args.input_file_path, "r") as fp:
         messages = fp.readlines()
