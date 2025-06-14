@@ -1,5 +1,5 @@
-FROM python@sha256:65c843653048a3ba22c8d5083a022f44aef774974f0f7f70cbf8cee4e931ac96 AS base
-# python:3.10.17-slim
+FROM python@sha256:9ed09f78253eb4f029f3d99e07c064f138a6f1394932c3807b3d0738a674d33b AS base
+# python:3.13.4-slim
 
 # Rust
 RUN apt-get update && apt-get install -y curl build-essential pkg-config libssl-dev && \
@@ -16,7 +16,7 @@ COPY Cargo.toml Cargo.lock ./
 
 RUN cd rust_bot && cargo build --release
 
-FROM python@sha256:65c843653048a3ba22c8d5083a022f44aef774974f0f7f70cbf8cee4e931ac96
+FROM python@sha256:9ed09f78253eb4f029f3d99e07c064f138a6f1394932c3807b3d0738a674d33b
 
 # Copying from base image
 WORKDIR /app
@@ -25,7 +25,7 @@ COPY --from=base /app/target/release/rust_bot ./bot
 COPY .env /app/.env
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc &&\
+    build-essential gcc cmake &&\
     apt-get clean &&\
     rm -rf /var/lib/apt/lists/*
 

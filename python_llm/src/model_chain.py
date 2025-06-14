@@ -70,7 +70,9 @@ class ModelHandler:
         """Use textstat to evaluate complexity of user query for max tokens."""
         complexity_score = textstat.flesch_reading_ease(question)
 
-        if complexity_score > 60:
+        if complexity_score > 80:
+            return 200
+        elif complexity_score > 60:
             return 300  # Simple
         elif complexity_score > 40:
             return 800
@@ -80,7 +82,7 @@ class ModelHandler:
             return 1100
         elif complexity_score > 5:
             return 1500  # Complex
-        else: return 100
+        else: return 2000
 
     def _update_pipeline(self, message_history) -> None:
         max_new_tokens = self._determine_max_tokens(message_history)
