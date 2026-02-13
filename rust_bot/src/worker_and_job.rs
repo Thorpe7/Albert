@@ -5,7 +5,7 @@ use tokio::sync::mpsc::Receiver;
 use uuid::Uuid;
 use std::fs;
 
-use crate::bot_functions::summarize_chat;
+use crate::bot_functions::{summarize_chat, summarize_article};
 
 pub enum Job {
     SummarizeChat {
@@ -15,10 +15,13 @@ pub enum Job {
         reaction: Reaction,
         task_prompt: String
     },
-    // SummarizeArticle {
-    //     For the next bot feature
-    // }
-
+    SummarizeArticle {
+        uuid: Uuid,
+        msg: Message,
+        ctx: Context,
+        reaction: Reaction,
+        article_url: String,
+    },
 }
 
 pub fn start_worker(mut rx: Receiver<Job>) {
@@ -28,13 +31,26 @@ pub fn start_worker(mut rx: Receiver<Job>) {
                 Job::SummarizeChat { uuid, msg, ctx, reaction, task_prompt } => {
                     match summarize_chat(uuid, msg, &ctx, reaction, task_prompt).await {
                         Ok(_) => {
-                            let dir_path = format!("{}", uuid);
+                            let dir_path = format!("jobs/{}", uuid);
                             if let Err(e) = fs::remove_dir_all(&dir_path) {
                                 eprintln!("Failed to delete job folder {}: {}", dir_path, e);
                             }
                         },
                         Err(e) => {
                             eprint!("Summarizing failed: {}",e);
+                        }
+                    }
+                }
+                Job::SummarizeArticle { uuid, msg, ctx, reaction, article_url } => {
+                    match summarize_article(uuid, msg, &ctx, reaction, article_url).await {
+                        Ok(_) => {
+                            let dir_path = format!("jobs/{}", uuid);
+                            if let Err(e) = fs::remove_dir_all(&dir_path) {
+                                eprintln!("Failed to delete job folder {}: {}", dir_path, e);
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("Article summarization failed: {}", e);
                         }
                     }
                 }

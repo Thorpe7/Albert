@@ -1,6 +1,7 @@
 """Main script for python LLM of Albert"""
 
 import json
+import os
 import argparse
 from model_chain import ModelHandler
 from utils.output_structures import clean_model_output
@@ -20,6 +21,6 @@ if __name__ == "__main__":
     print("initial response:", "\n", response, "\n")
     cleaned_response = clean_model_output(response)
 
-    dir_id = args.input_file_path.split("/")[0]
+    dir_id = os.path.dirname(args.input_file_path)
     with open(f"{dir_id}/model_response.json", "w") as out_file:
         json.dump(cleaned_response, out_file)

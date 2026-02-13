@@ -1,3 +1,4 @@
+mod article_handler;
 mod handle_events;
 mod message_utils;
 mod python_runner;

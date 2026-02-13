@@ -2,14 +2,16 @@ use serenity::all::Message;
 use serenity::builder::CreateMessage;
 use serenity::client::Context;
 use serenity::model::channel::Reaction;
+use serenity::model::prelude::ReactionType;
 use uuid::Uuid;
 use anyhow::Result;
 
+use crate::article_handler::{fetch_article_text, SUMMARY_MARKER};
 use crate::message_utils::{
     format_json_to_message, string_format_today_messages, get_channel_name, get_messages
 };
 use crate::python_runner::run_python;
-use crate::read_and_write::{read_json, write_messages_to_txt};
+use crate::read_and_write::{read_json, write_messages_to_txt, write_article_to_txt};
 
 
 pub async fn summarize_chat(file_id:Uuid, msg:Message, ctx: &Context, reaction: Reaction, task_prompt: String) -> Result<()>{
@@ -47,5 +49,49 @@ pub async fn summarize_chat(file_id:Uuid, msg:Message, ctx: &Context, reaction: 
     } else {
         return Err(anyhow::anyhow!("No user_id on reaction..."));
     }
+    Ok(())
+}
+
+pub async fn summarize_article(file_id: Uuid, msg: Message, ctx: &Context, _reaction: Reaction, article_url: String) -> Result<()> {
+    let article_text = tokio::task::spawn_blocking(move || {
+        fetch_article_text(&article_url)
+    }).await??;
+
+    let article_path = write_article_to_txt(&article_text, &file_id);
+    let task_prompt = "ARTICLE_SUMMARIZATION";
+
+    if let Err(e) = run_python(&article_path, task_prompt).await {
+        return Err(anyhow::anyhow!("Running python script failed: {}", e));
+    }
+
+    let response_path = format!("jobs/{}/model_response.json", file_id);
+    let model_response = match read_json(&response_path) {
+        Ok(data) => data,
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to read JSON ({}): {}", &response_path, e));
+        }
+    };
+
+    let summary = match model_response.get("summary") {
+        Some(val) => val.clone(),
+        None => return Err(anyhow::anyhow!("No 'summary' key in model response")),
+    };
+
+    let summary_text = if summary.len() > 2000 {
+        format!("{}...", &summary[..1997])
+    } else {
+        summary
+    };
+
+    let reply = CreateMessage::new()
+        .content(&summary_text)
+        .reference_message(&msg);
+
+    msg.channel_id.send_message(&ctx.http, reply).await
+        .map_err(|e| anyhow::anyhow!("Failed to send article summary reply: {}", e))?;
+
+    msg.channel_id.create_reaction(&ctx.http, msg.id, ReactionType::Unicode(SUMMARY_MARKER.to_string())).await
+        .map_err(|e| anyhow::anyhow!("Failed to add marker reaction: {}", e))?;
+
     Ok(())
 }

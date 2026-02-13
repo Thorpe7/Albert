@@ -2,7 +2,7 @@ use serde::Serialize;
 use serenity::all::{Channel,Message, Reaction};
 use uuid::Uuid;
 use std::collections::HashMap;
-use time::{Date, OffsetDateTime, Time, UtcOffset};
+use time::OffsetDateTime;
 use serenity::client::Context;
 use anyhow::Result;
 use serenity::builder::GetMessages;
@@ -13,11 +13,8 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-pub fn get_start_of_today() -> time::OffsetDateTime {
-    let pt_offset = UtcOffset::from_hms(-8, 0, 0).unwrap();
-    let now = OffsetDateTime::now_utc().to_offset(pt_offset);
-    let today = Date::from_calendar_date(now.year(), now.month(), now.day()).unwrap();
-    today.with_time(Time::MIDNIGHT).assume_offset(pt_offset)
+pub fn get_24h_ago() -> time::OffsetDateTime {
+    OffsetDateTime::now_utc() - time::Duration::hours(24)
 }
 
 pub fn string_format_today_messages(messages_today: &Vec<HashMap<String, String>>) -> String {
@@ -44,7 +41,7 @@ pub fn format_json_to_message(json_data: &HashMap<String,String>, channel_name: 
 
 pub async fn get_channel_name(file_id: Uuid, msg: Message, ctx: &Context) -> Result<(String, String)> {
     let mut channel_name = String::new();
-    let response_path = format!("{}/model_response.json",file_id);
+    let response_path = format!("jobs/{}/model_response.json",file_id);
     if let Ok(channel) = msg.channel_id.to_channel(&ctx.http).await {
         if let Channel::Guild(guild_channel) = channel {
             channel_name = guild_channel.name;
@@ -58,7 +55,7 @@ pub async fn get_channel_name(file_id: Uuid, msg: Message, ctx: &Context) -> Res
 }
 
 pub async fn get_messages(reaction: &Reaction, ctx: &Context) -> Vec<HashMap<String,String>> {
-    let start_of_today = get_start_of_today();
+    let cutoff = get_24h_ago();
     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
     let message_getter = GetMessages::new().limit(100);
     let result_history = reaction
@@ -68,7 +65,7 @@ pub async fn get_messages(reaction: &Reaction, ctx: &Context) -> Vec<HashMap<Str
 
     if let Ok(history) = result_history {
         for chat in history.iter() {
-            if chat.timestamp.to_utc() >= start_of_today {
+            if chat.timestamp.to_utc() >= cutoff {
                 // println!("{}", chat.timestamp.to_utc());
                 // println!("{}", start_of_today);
                 let mut entry = HashMap::new();

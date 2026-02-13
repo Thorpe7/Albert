@@ -8,10 +8,10 @@ use std::path::Path;
 
 
 pub fn write_messages_to_txt(messages: &String, file_id: &Uuid ) -> String {
-    let dir_path_string = file_id.hyphenated().to_string();
+    let dir_path_string = format!("jobs/{}", file_id.hyphenated());
     let dir_path = Path::new(&dir_path_string);
     if !dir_path.exists() {
-        fs::create_dir(dir_path).unwrap();
+        fs::create_dir_all(dir_path).unwrap();
     }
     let msg_hx_path = format!("{}/chat_history.txt", dir_path_string);
     let mut output_file =
@@ -21,6 +21,22 @@ pub fn write_messages_to_txt(messages: &String, file_id: &Uuid ) -> String {
         .expect("Failed to write to 'chat_history.txt...");
 
     msg_hx_path
+}
+
+pub fn write_article_to_txt(article_text: &str, file_id: &Uuid) -> String {
+    let dir_path_string = format!("jobs/{}", file_id.hyphenated());
+    let dir_path = Path::new(&dir_path_string);
+    if !dir_path.exists() {
+        fs::create_dir_all(dir_path).unwrap();
+    }
+    let article_path = format!("{}/article_content.txt", dir_path_string);
+    let mut output_file =
+        File::create(&article_path).expect("Failed to create output file...");
+    output_file
+        .write_all(article_text.as_bytes())
+        .expect("Failed to write to 'article_content.txt'...");
+
+    article_path
 }
 
 pub fn read_json(file_path: &str) -> Result<HashMap<String,String>, Box<dyn std::error::Error>> {

@@ -6,6 +6,7 @@ use serenity::model::prelude::ReactionType;
 use serenity::prelude::*;
 use tokio::sync::mpsc::Sender;
 use uuid::Uuid;
+use crate::article_handler::{extract_url, bot_already_replied};
 use crate::worker_and_job::Job;
 pub struct Handler {
     pub tx: Sender<Job>
@@ -43,6 +44,29 @@ impl EventHandler for Handler {
                         let task_prompt = "PER_USER_SUMMARY".to_string();
                         let job = Job::SummarizeChat { uuid: Uuid::new_v4(), msg: _msg, ctx: ctx, reaction: reaction, task_prompt: task_prompt };
                         self.tx.send(job).await.unwrap();
+                }
+            }
+            else if emoji == "\u{1F4D6}" {
+                if let Ok(_msg) = reaction
+                    .channel_id
+                    .message(&ctx.http, reaction.message_id)
+                    .await{
+                        if bot_already_replied(&_msg) {
+                            println!("Albert already summarized this article, skipping...");
+                            return;
+                        }
+                        if let Some(article_url) = extract_url(&_msg.content) {
+                            let job = Job::SummarizeArticle {
+                                uuid: Uuid::new_v4(),
+                                msg: _msg,
+                                ctx: ctx,
+                                reaction: reaction,
+                                article_url,
+                            };
+                            self.tx.send(job).await.unwrap();
+                        } else {
+                            println!("No URL found in message, skipping...");
+                        }
                 }
             }
         }
