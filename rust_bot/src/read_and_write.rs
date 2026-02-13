@@ -1,42 +1,48 @@
-use crate::message_utils::{ChatMessage,string_format_today_messages};
-use serde::Deserialize;
 use serde_json;
-use serde_json::to_string_pretty;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::collections::HashMap;
 use uuid::Uuid;
+use std::path::Path;
 
-#[derive(Debug, Deserialize)]
-pub struct Summary {
-    pub summary: String,
-    pub content: String,
-}
 
-pub fn write_messages_to_json(messages: &Vec<ChatMessage>) {
-    let json_string = to_string_pretty(&messages).expect("Failed to serialize messages to JSON...");
+pub fn write_messages_to_txt(messages: &String, file_id: &Uuid ) -> String {
+    let dir_path_string = format!("jobs/{}", file_id.hyphenated());
+    let dir_path = Path::new(&dir_path_string);
+    if !dir_path.exists() {
+        fs::create_dir_all(dir_path).unwrap();
+    }
+    let msg_hx_path = format!("{}/chat_history.txt", dir_path_string);
     let mut output_file =
-        File::create("chat_history.json").expect("Failed to create output file...");
+        File::create(&msg_hx_path).expect("Failed to create output file...");
     output_file
-        .write_all(json_string.as_bytes())
-        .expect("Failed to write to 'chat_history.json'...");
+        .write_all(messages.as_bytes())
+        .expect("Failed to write to 'chat_history.txt...");
+
+    msg_hx_path
 }
 
-pub fn write_messages_to_txt(messages_today: &Vec<HashMap<String, String>>) -> Result<String,std::io::Error>{
+pub fn write_article_to_txt(article_text: &str, file_id: &Uuid) -> String {
+    let dir_path_string = format!("jobs/{}", file_id.hyphenated());
+    let dir_path = Path::new(&dir_path_string);
+    if !dir_path.exists() {
+        fs::create_dir_all(dir_path).unwrap();
+    }
+    let article_path = format!("{}/article_content.txt", dir_path_string);
+    let mut output_file =
+        File::create(&article_path).expect("Failed to create output file...");
+    output_file
+        .write_all(article_text.as_bytes())
+        .expect("Failed to write to 'article_content.txt'...");
 
-    let formatted_messages: String = string_format_today_messages(&messages_today); 
-    let id = Uuid::new_v4().to_string();
-    let filepath = format!("/tmp/input_{id}.txt");
-    let mut output_file = File::create(&filepath).expect("Failed to create output file...");
-    output_file.write_all(formatted_messages.as_bytes())?;
-    Ok(filepath.to_string())
+    article_path
 }
 
-pub fn read_json(file_path: Option<&str>) -> Result<HashMap<String,String>, Box<dyn std::error::Error>> {
-    let file_path = file_path.unwrap_or("model_response.json");
+pub fn read_json(file_path: &str) -> Result<HashMap<String,String>, Box<dyn std::error::Error>> {
+    // let file_path = file_path.to_string();
     let data = fs::read_to_string(&file_path)?;
     let model_response: HashMap<String,String> = serde_json::from_str(&data)?;
-    println!("{:?}", model_response);
+    // println!("{:?}", model_response);
     Ok(model_response)
 }

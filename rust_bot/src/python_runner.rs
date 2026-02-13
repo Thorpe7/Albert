@@ -1,25 +1,18 @@
-use serde::Deserialize;
-use std::fs;
-use std::process::Command;
+use tokio::process::Command;
 
-#[derive(Debug, Deserialize)]
-pub struct Summary {
-    author: String,
-    summary: String,
-}
 
-#[derive(Debug, Deserialize)]
-pub struct ModelResponse {
-    summaries: Vec<Summary>,
-}
-
-pub fn run_python(filepath: &String) {
-    if let Ok(status) = Command::new("python")
+pub async fn run_python(file_id: &str, task_prompt: &str) -> std::io::Result<()> {
+    let status = Command::new("python")
         .arg("python_llm/src/main.py")
-        .arg(filepath)
+        .arg(file_id)
+        .arg(task_prompt)
         .status()
-    {
+        .await?;
+    if status.success() {
         println!("{}", status);
+        Ok(())
+    } else {
         println!("Running python was successful!");
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "Python script failed..."))
     }
 }

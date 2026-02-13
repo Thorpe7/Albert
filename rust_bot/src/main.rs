@@ -1,22 +1,24 @@
-mod bot;
+mod article_handler;
+mod handle_events;
 mod message_utils;
 mod python_runner;
 mod read_and_write;
+mod worker_and_job;
+mod bot_functions;
 
-use bot::Handler;
+use handle_events::Handler;
 use dotenv::dotenv;
 use serenity::prelude::*;
 use std::env;
+use tokio::sync::mpsc;
+use crate::worker_and_job::{start_worker, Job};
 
-// !NEXT STEPS: COULD NOT PUT TWO EMOTES AND GET MESSAGE FOR BOTH IN SEQUENCE
-// TODO: Explicit download and install of local model & pre-load checkpoint shards in dockerfile
+// !NEXT STEPS:
 // TODO: Add logging and debugging logs for rust & python, esp to see model responses
 // TODO: Add context window check mechanism
-// TODO: Deploy, tbd where (EC2)
-
-// !Testing Notes:
-// TODO: Add timezone corrections so UTC timezone difference doesn't include yesterday's msgs
-// TODO: Check that summarization works multiple times in a row and doesn't just respond with "No messages to summarize".
+// TODO: Cache recent summaries w/ last message datetime check
+// TODO: Summary broken down by user
+// TODO: Summarize article
 
 #[tokio::main]
 async fn main() {
@@ -30,10 +32,14 @@ async fn main() {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MESSAGE_REACTIONS;
 
+    let (tx, rx) = mpsc::channel::<Job>(32);
+    let handler = Handler{tx};
+    start_worker(rx);
+
     // Create a new instance of the Client, logging in as a bot. This will automatically prepend
     // your bot token with "Bot ", which is a requirement by Discord for bot users.
     let mut client = Client::builder(&discord_token, intents)
-        .event_handler(Handler)
+        .event_handler(handler)
         .await
         .expect("Err creating client");
 
