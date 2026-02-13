@@ -92,6 +92,14 @@ Also hardened `python_llm/src/utils/output_structures.py` parser with 3 fallback
 11. Add logging and monitoring — basic `println`/`eprintln` only
 12. Integration testing with various article types — manual testing done
 
+**Phase 4: Unit Tests**
+13. Unit tests for `extract_url()` — valid URLs, no URLs, multiple URLs, URLs with surrounding text
+14. Unit tests for `bot_already_replied()` — no reactions, other reactions, bot's own marker reaction
+15. Unit tests for `fetch_article_text()` — mock successful fetch, empty content, network errors
+16. Unit tests for `_normalize_response()` — standard JSON, extra keys, list values, nested structures
+17. Unit tests for `clean_model_output()` — valid JSON, trailing text, malformed JSON, plain text fallback
+18. Integration test for full article summarization pipeline (mock Discord + HTTP)
+
 ### Edge Cases
 - ~~**Paywalled articles:**~~ Returns error if extracted text is empty (logged, skipped silently) ✅
 - **Multiple URLs in one message:** Currently takes first URL only. Summarize all or prompt user to choose?
@@ -221,6 +229,13 @@ def build_qa_prompt(summary: str, qa_history: List[dict], user_question: str) ->
 10. ✅ Handle multiple concurrent conversations per user
 11. ✅ Add typing indicators while processing
 12. ✅ Graceful handling of expired sessions
+
+**Phase 4: Unit Tests (Week 4)**
+13. Unit tests for session creation, lookup, and expiration
+14. Unit tests for DM message routing (guild vs DM detection)
+15. Unit tests for Q&A prompt construction and context window trimming
+16. Unit tests for conversation history formatting and token budget limits
+17. Integration test for full DM Q&A flow (mock Discord + session store)
 
 ### Security & Privacy Considerations
 
@@ -690,6 +705,14 @@ jobs:
 25. ✅ Optimize cold start times
 26. ✅ Fine-tune Bedrock prompts
 27. ✅ Set up cost monitoring and budgets
+
+**Phase 6: Unit Tests (Week 7)**
+28. Unit tests for BedrockClient — mock API responses, error handling, token limits
+29. Unit tests for webhook signature verification
+30. Unit tests for DynamoDB state manager — CRUD operations, TTL behavior
+31. Unit tests for Lambda handler routing — event parsing, response formatting
+32. Unit tests for 3-second timeout handling and async deferral
+33. Integration test for full Lambda pipeline (mock API Gateway + Bedrock + DynamoDB)
 
 ### Cost Estimation (Monthly)
 
