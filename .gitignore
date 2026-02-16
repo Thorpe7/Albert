@@ -6,3 +6,4 @@ model_response.json
 .python-version
 __pycache__/
 jobs/
+CLAUDE.md
