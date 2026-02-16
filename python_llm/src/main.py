@@ -18,8 +18,6 @@ if __name__ == "__main__":
         messages = fp.readlines()
         message_history = "".join(messages)
     
-    # Call Model handler
-    TestHandler = ModelHandler()
     response = TestHandler.generate_response(message_history=message_history)
     print("initial response:", "\n", response, "\n")
     cleaned_response = clean_model_output(response)
