@@ -419,18 +419,48 @@ See `implement_strats.md` for full Terraform HCL and GitHub Actions YAML.
 
 > **Implementation Notes (Phase 1):** Added `ResponseTarget` enum (`response_target.rs`) to decouple delivery mechanism from trigger type — reactions and interactions share the same worker queue and bot_functions. Decoupled `get_messages()` and `get_channel_name()` from `Reaction`/`Message` types (now take `ChannelId`). Commands registered via `Command::set_global_commands()` in `ready()`. Context menu dedup re-fetches message via API (Discord resolved data omits reactions). Error recovery: interaction variants get error message edited into deferred response instead of silent timeout. Bot OAuth2 URL needs `applications.commands` scope. Both trigger paths (reactions + slash commands) coexist.
 
-**Phase 2: Bedrock Integration (local)**
-10. Add AWS SDK dependencies to Rust project
-11. Implement BedrockClient with Claude 3.5 Haiku
-12. Replace Python subprocess calls with direct Bedrock API calls
-13. Test locally — validate output quality and latency vs Mistral-7B
-14. Remove `python_llm/`, `python_runner.rs`, file-based IPC
+**Phase 2: Bedrock Integration (local)** — DONE (2026-02-16)
+10. ~~Add AWS SDK dependencies to Rust project~~ ✅
+11. ~~Implement BedrockClient with Claude 3.5 Haiku~~ ✅
+12. ~~Replace Python subprocess calls with direct Bedrock API calls~~ ✅
+13. ~~Test locally — validate output quality and latency vs Mistral-7B~~ ✅
+14. ~~Remove `python_llm/`, `python_runner.rs`, `read_and_write.rs`, file-based IPC~~ ✅
 
-**Phase 3: Lambda Conversion**
-15. Create Lambda A (Gateway) — signature verification, deferred ACK, async invoke
-16. Create Lambda B (Worker) — Bedrock calls, Discord followup webhook, DynamoDB
-17. Implement ed25519 signature verification
+> **Implementation Notes (Phase 2):** Added `bedrock_client.rs` wrapping `aws_sdk_bedrockruntime::Client` with Converse API. `BedrockClient` initialized as `Arc` in `main.rs`, passed to worker. Prompts ported from Python `[INST]` format to Converse system/user messages. Claude 3.5 Haiku produces clean plain text output — no JSON wrapping or 3-level fallback parser needed (eliminated `output_structures.py`). Model ID requires inference profile prefix: `us.anthropic.claude-3-5-haiku-20241022-v1:0`. Removed `uuid`, `serde`, `serde_json` deps from rust_bot. Deleted entire `python_llm/` directory, `python_runner.rs`, `read_and_write.rs`, and all `jobs/{uuid}/` temp dir logic.
+
+**Phase 3: Lambda Conversion** — DONE (2026-02-16)
+15. ~~Create Lambda A (Gateway) — signature verification, deferred ACK, async invoke~~ ✅
+16. ~~Create Lambda B (Worker) — Bedrock calls, Discord followup webhook~~ ✅
+17. ~~Implement ed25519 signature verification~~ ✅
 18. Local testing with `cargo lambda` / SAM CLI
+
+> **Implementation Notes (Phase 3):** Converted to Cargo workspace with three members. `rust_bot/` kept as fallback (still compiles and can run as a Gateway bot if Lambda has issues). Lambda A (`lambda_gateway`) uses `lambda_http`, `ed25519-dalek`, and `aws-sdk-lambda` for async worker invocation. Lambda B (`lambda_worker`) uses `lambda_runtime` with a custom `DiscordClient` (reqwest-based REST API wrapper) replacing Serenity's `ctx.http`. `BedrockClient` and `article_handler` copied verbatim from `rust_bot/`. DynamoDB deferred to Phase 5 — article dedup still works via bot reaction check over REST for the context menu path. `SKIP_SIGNATURE_VERIFY` env var for local testing.
+>
+> **Post-Phase 3 workspace structure:**
+> ```
+> Albert/
+> ├── Cargo.toml                       # Workspace root (3 members)
+> ├── rust_bot/                        # KEPT as Gateway fallback during migration
+> │   └── src/
+> │       ├── main.rs                  # Serenity Gateway entry point
+> │       ├── handle_events.rs         # EventHandler (reactions + slash commands)
+> │       ├── worker_and_job.rs        # MPSC worker queue
+> │       ├── bot_functions.rs         # Orchestrators (uses Serenity ctx.http)
+> │       ├── bedrock_client.rs        # BedrockClient (shared with lambda_worker)
+> │       ├── article_handler.rs       # URL extraction + article fetch + dedup
+> │       ├── response_target.rs       # ResponseTarget enum for delivery routing
+> │       └── message_utils.rs         # Discord helpers (fetch messages, channel names)
+> ├── lambda_gateway/                  # Lambda A — fast ACK + signature verify
+> │   └── src/
+> │       └── main.rs                  # Ed25519 verify, ping, defer, async invoke
+> └── lambda_worker/                   # Lambda B — actual summarization work
+>     └── src/
+>         ├── main.rs                  # Entry point, command dispatch, error handling
+>         ├── bedrock_client.rs        # BedrockClient (copy from rust_bot)
+>         ├── article_handler.rs       # extract_url + fetch_article_text (from rust_bot)
+>         ├── discord_client.rs        # reqwest-based Discord REST API wrapper
+>         └── handlers.rs             # handle_summary_chat, handle_summary_article_*
+> ```
 
 **Phase 4: Infrastructure & Deploy**
 19. Deploy API Gateway (HTTP) + both Lambdas with Terraform
@@ -558,10 +588,12 @@ Dashboard: Albert Bot Metrics
 COMPLETED:  Feature 1 — Article Summarization (2026-02-13)
 COMPLETED:  Article fetch fix + dedup marker change (2026-02-16)
 COMPLETED:  Feature 3 Phase 1 — Slash commands + context menu (2026-02-16)
+COMPLETED:  Feature 3 Phase 2 — Bedrock integration (2026-02-16)
+COMPLETED:  Feature 3 Phase 3 — Lambda conversion / Cargo workspace (2026-02-16)
 IN PROGRESS: Feature 3 — AWS Migration (bedrock-migration branch)
   Phase 1:  Slash commands (local, Gateway-based) — DONE
-  Phase 2:  Bedrock integration (replace Python/Mistral-7B)
-  Phase 3:  Lambda conversion (two-Lambda pattern)
+  Phase 2:  Bedrock integration (replace Python/Mistral-7B) — DONE
+  Phase 3:  Lambda conversion (two-Lambda pattern, rust_bot kept as fallback) — DONE
   Phase 4:  Infrastructure deploy (Terraform)
   Phase 5:  Optimization
 NOT STARTED: Feature 2 — Interactive Q&A in DMs (depends on Feature 3 for DynamoDB + Bedrock)
@@ -573,36 +605,47 @@ NOT STARTED: Feature 2 — Interactive Q&A in DMs (depends on Feature 3 for Dyna
 
 ## Appendix: Key Code Locations
 
-### New Files to Create
+### Files Created (Phase 2-3)
 ```
 lambda_gateway/src/
 └── main.rs                      # Lambda A — signature verify, ACK, async invoke
 
 lambda_worker/src/
 ├── main.rs                      # Lambda B — entry point, command dispatch
-├── bedrock_client.rs            # AWS Bedrock integration (Claude 3.5 Haiku)
-├── discord_followup.rs          # POST results via Discord followup webhook
-├── state_manager.rs             # DynamoDB wrapper
+├── bedrock_client.rs            # AWS Bedrock integration (copied from rust_bot)
+├── article_handler.rs           # URL extraction + article fetch (copied from rust_bot)
+├── discord_client.rs            # reqwest-based Discord REST API wrapper
+└── handlers.rs                  # Command handlers (chat summary, article summary)
+
+rust_bot/src/
+└── bedrock_client.rs            # BedrockClient (Phase 2, also copied to lambda_worker)
+```
+
+### Files Still To Create
+```
+lambda_worker/src/
+├── state_manager.rs             # DynamoDB wrapper (Phase 5)
 └── dm_session_manager.rs        # DM conversation state (Feature 2)
 
 infrastructure/
-└── main.tf                      # Terraform — API Gateway, Lambdas, DynamoDB, IAM
+└── main.tf                      # Terraform — API Gateway, Lambdas, DynamoDB, IAM (Phase 4)
 ```
 
-### Files to Reuse / Adapt
-```
-rust_bot/src/
-├── article_handler.rs           # extract_url(), fetch_article_text() → reuse in Lambda B
-└── message_utils.rs             # Message formatting helpers → reuse in Lambda B
-```
-
-### Files to Delete (Post-Migration)
+### Files Already Deleted (Phase 2)
 ```
 python_llm/                      # Entire directory (replaced by Bedrock)
 rust_bot/src/python_runner.rs   # Subprocess execution (replaced by Bedrock)
 rust_bot/src/read_and_write.rs  # File-based IPC (no longer needed)
-rust_bot/src/handle_events.rs   # Serenity reaction handlers (replaced by Lambda A)
-rust_bot/src/worker_and_job.rs  # MPSC worker queue (replaced by Lambda B)
+```
+
+### Files Kept as Fallback (rust_bot/)
+```
+rust_bot/                        # Full Serenity Gateway bot — kept as rollback option
+├── src/handle_events.rs         # Serenity reaction + slash command handlers
+├── src/worker_and_job.rs        # MPSC worker queue
+├── src/bot_functions.rs         # Orchestrators (Serenity ctx.http)
+├── src/response_target.rs       # ResponseTarget enum
+└── src/message_utils.rs         # Discord helpers
 ```
 
 ---
@@ -628,6 +671,8 @@ rust_bot/src/worker_and_job.rs  # MPSC worker queue (replaced by Lambda B)
 ## Next Steps
 
 1. ~~**Implement slash commands locally** (Feature 3, Phase 1)~~ — DONE (2026-02-16)
-2. **Integrate Bedrock** (Feature 3, Phase 2) — replace Python/Mistral-7B with direct Rust → Bedrock calls
-3. **Convert to Lambda** (Feature 3, Phase 3-4) — two-Lambda pattern, Terraform deploy
-4. **Begin Feature 2** (Interactive Q&A) — depends on DynamoDB + Bedrock from Feature 3
+2. ~~**Integrate Bedrock** (Feature 3, Phase 2)~~ — DONE (2026-02-16)
+3. ~~**Convert to Lambda** (Feature 3, Phase 3)~~ — DONE (2026-02-16)
+4. **Deploy infrastructure** (Feature 3, Phase 4) — Terraform for API Gateway, Lambdas, IAM roles
+5. **Optimization** (Feature 3, Phase 5) — cold start tuning, DynamoDB caching, rate limiting
+6. **Begin Feature 2** (Interactive Q&A) — depends on DynamoDB + Bedrock from Feature 3

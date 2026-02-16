@@ -8,13 +8,12 @@ use serenity::model::gateway::Ready;
 use serenity::model::prelude::ReactionType;
 use serenity::prelude::*;
 use tokio::sync::mpsc::Sender;
-use uuid::Uuid;
 use crate::article_handler::{extract_url, bot_already_replied};
 use crate::response_target::ResponseTarget;
 use crate::worker_and_job::Job;
 
 pub struct Handler {
-    pub tx: Sender<Job>
+    pub tx: Sender<Job>,
 }
 
 #[async_trait]
@@ -33,7 +32,6 @@ impl EventHandler for Handler {
                 let channel_id = reaction.channel_id;
                 let task_prompt = "STANDARD_SUMMARY".to_string();
                 let job = Job::SummarizeChat {
-                    uuid: Uuid::new_v4(),
                     channel_id,
                     ctx,
                     response_target: ResponseTarget::ReactionDm { reaction },
@@ -45,7 +43,6 @@ impl EventHandler for Handler {
                 let channel_id = reaction.channel_id;
                 let task_prompt = "PER_USER_SUMMARY".to_string();
                 let job = Job::SummarizeChat {
-                    uuid: Uuid::new_v4(),
                     channel_id,
                     ctx,
                     response_target: ResponseTarget::ReactionDm { reaction },
@@ -65,7 +62,6 @@ impl EventHandler for Handler {
                     }
                     if let Some(article_url) = extract_url(&msg.content) {
                         let job = Job::SummarizeArticle {
-                            uuid: Uuid::new_v4(),
                             ctx,
                             response_target: ResponseTarget::ReactionReply { reaction },
                             article_url,
@@ -127,7 +123,6 @@ impl Handler {
 
         let channel_id = command.channel_id;
         let job = Job::SummarizeChat {
-            uuid: Uuid::new_v4(),
             channel_id,
             ctx,
             response_target: ResponseTarget::EphemeralInteraction { interaction: command },
@@ -159,7 +154,6 @@ impl Handler {
         }
 
         let job = Job::SummarizeArticle {
-            uuid: Uuid::new_v4(),
             ctx,
             response_target: ResponseTarget::EphemeralInteraction { interaction: command },
             article_url,
@@ -169,7 +163,6 @@ impl Handler {
     }
 
     async fn handle_summary_article_context_menu(&self, ctx: Context, command: CommandInteraction) {
-        // Get message ID from resolved data, then re-fetch for full reaction info
         let msg_id = match command.data.target() {
             Some(ResolvedTarget::Message(msg)) => msg.id,
             _ => {
@@ -218,7 +211,6 @@ impl Handler {
         }
 
         let job = Job::SummarizeArticle {
-            uuid: Uuid::new_v4(),
             ctx,
             response_target: ResponseTarget::VisibleInteraction { interaction: command },
             article_url,
