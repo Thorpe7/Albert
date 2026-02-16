@@ -1,5 +1,6 @@
 use serde::Serialize;
-use serenity::all::{Channel,Message, Reaction};
+use serenity::all::Channel;
+use serenity::model::id::ChannelId;
 use uuid::Uuid;
 use std::collections::HashMap;
 use time::OffsetDateTime;
@@ -39,10 +40,10 @@ pub fn format_json_to_message(json_data: &HashMap<String,String>, channel_name: 
     format!("**Channel: **{}\n{}", channel_name, message_str)
 }
 
-pub async fn get_channel_name(file_id: Uuid, msg: Message, ctx: &Context) -> Result<(String, String)> {
+pub async fn get_channel_name(file_id: Uuid, channel_id: ChannelId, ctx: &Context) -> Result<(String, String)> {
     let mut channel_name = String::new();
     let response_path = format!("jobs/{}/model_response.json",file_id);
-    if let Ok(channel) = msg.channel_id.to_channel(&ctx.http).await {
+    if let Ok(channel) = channel_id.to_channel(&ctx.http).await {
         if let Channel::Guild(guild_channel) = channel {
             channel_name = guild_channel.name;
         } else {
@@ -54,12 +55,11 @@ pub async fn get_channel_name(file_id: Uuid, msg: Message, ctx: &Context) -> Res
     Ok((channel_name, response_path))
 }
 
-pub async fn get_messages(reaction: &Reaction, ctx: &Context) -> Vec<HashMap<String,String>> {
+pub async fn get_messages(channel_id: ChannelId, ctx: &Context) -> Vec<HashMap<String,String>> {
     let cutoff = get_24h_ago();
     let mut messages_today: Vec<HashMap<String, String>> = Vec::new();
     let message_getter = GetMessages::new().limit(100);
-    let result_history = reaction
-        .channel_id
+    let result_history = channel_id
         .messages(&ctx.http, message_getter)
         .await;
 

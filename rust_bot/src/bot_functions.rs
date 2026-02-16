@@ -1,58 +1,44 @@
 use serenity::all::Message;
-use serenity::builder::CreateMessage;
 use serenity::client::Context;
-use serenity::model::channel::Reaction;
-use serenity::model::prelude::ReactionType;
+use serenity::model::id::ChannelId;
 use uuid::Uuid;
 use anyhow::Result;
 
-use crate::article_handler::{fetch_article_text, SUMMARY_MARKER};
+use crate::article_handler::fetch_article_text;
 use crate::message_utils::{
     format_json_to_message, string_format_today_messages, get_channel_name, get_messages
 };
 use crate::python_runner::run_python;
 use crate::read_and_write::{read_json, write_messages_to_txt, write_article_to_txt};
+use crate::response_target::{ResponseTarget, deliver_chat_summary, deliver_article_summary};
 
 
-pub async fn summarize_chat(file_id:Uuid, msg:Message, ctx: &Context, reaction: Reaction, task_prompt: String) -> Result<()>{
-    let (channel_name, response_path) = get_channel_name(file_id, msg, &ctx).await.unwrap();
-    let messages_today = get_messages(&reaction, &ctx).await;
-    
-    // TODO: Separate running model from sending message
-    let dm: CreateMessage;
+pub async fn summarize_chat(file_id: Uuid, channel_id: ChannelId, ctx: &Context, response_target: &ResponseTarget, task_prompt: String) -> Result<()> {
+    let (channel_name, response_path) = get_channel_name(file_id, channel_id, &ctx).await?;
+    let messages_today = get_messages(channel_id, &ctx).await;
+
+    let summary_text: String;
     if messages_today.len() > 1 {
         let formatted_messages: String = string_format_today_messages(&messages_today);
         let msg_hx_path = write_messages_to_txt(&formatted_messages, &file_id);
         if let Err(e) = run_python(&msg_hx_path, &task_prompt).await {
-            return Err(anyhow::anyhow!("Running python script failed: {}",e));
+            return Err(anyhow::anyhow!("Running python script failed: {}", e));
         }
         let model_response = match read_json(&response_path) {
             Ok(data) => data,
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to read JSON ({}): {}",&response_path,e));
+                return Err(anyhow::anyhow!("Failed to read JSON ({}): {}", &response_path, e));
             }
         };
-        let message_to_user = format_json_to_message(&model_response,&channel_name);
-        dm = CreateMessage::new().content(&message_to_user);
+        summary_text = format_json_to_message(&model_response, &channel_name);
     } else {
-        dm = CreateMessage::new().content("No messages found to summarize...");
+        summary_text = "No messages found to summarize...".to_string();
     }
 
-    if let Some(user_id) = reaction.user_id {
-        if let Ok(user) = user_id.to_user(&ctx.http).await {
-            if let Err(why) = user.direct_message(&ctx.http, dm).await {
-                return Err(anyhow::anyhow!("Failed to send dm to user: {why:?}"));
-            }
-        } else {
-            return Err(anyhow::anyhow!("Failed to fetch user from user_id..."));
-        }
-    } else {
-        return Err(anyhow::anyhow!("No user_id on reaction..."));
-    }
-    Ok(())
+    deliver_chat_summary(response_target, ctx, &summary_text).await
 }
 
-pub async fn summarize_article(file_id: Uuid, msg: Message, ctx: &Context, _reaction: Reaction, article_url: String) -> Result<()> {
+pub async fn summarize_article(file_id: Uuid, ctx: &Context, response_target: &ResponseTarget, article_url: String, original_msg: Option<&Message>) -> Result<()> {
     let article_text = tokio::task::spawn_blocking(move || {
         fetch_article_text(&article_url)
     }).await??;
@@ -83,15 +69,5 @@ pub async fn summarize_article(file_id: Uuid, msg: Message, ctx: &Context, _reac
         summary
     };
 
-    let reply = CreateMessage::new()
-        .content(&summary_text)
-        .reference_message(&msg);
-
-    msg.channel_id.send_message(&ctx.http, reply).await
-        .map_err(|e| anyhow::anyhow!("Failed to send article summary reply: {}", e))?;
-
-    msg.channel_id.create_reaction(&ctx.http, msg.id, ReactionType::Unicode(SUMMARY_MARKER.to_string())).await
-        .map_err(|e| anyhow::anyhow!("Failed to add marker reaction: {}", e))?;
-
-    Ok(())
+    deliver_article_summary(response_target, ctx, original_msg, &summary_text).await
 }

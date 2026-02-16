@@ -2,9 +2,9 @@
 
 ## Executive Summary
 This roadmap outlines the implementation plan for three major enhancements to the Albert Discord bot:
-1. Article summarization via emoji reactions
-2. Interactive Q&A in DMs
-3. Migration from local deployment to AWS Bedrock + Lambda
+1. Article summarization ~~via emoji reactions~~ (implemented 2026-02-13, migrating to slash commands/context menu)
+2. Interactive Q&A in DMs — not started
+3. Migration from local deployment to AWS Lambda + API Gateway + Bedrock
 
 ---
 
@@ -13,14 +13,16 @@ This roadmap outlines the implementation plan for three major enhancements to th
 ### Overview
 Enable users to summarize linked articles by adding an emoji reaction. ~~The summary will be posted as a thread on the original message~~, with deduplication to prevent re-summarizing the same link.
 
-> **Implementation Notes:** Implemented with a simpler architecture than originally planned. Summary is posted as a reply (not a thread — too noisy). Deduplication uses the bot's own 📖 reaction on the original message (no Redis/DynamoDB needed). Article extraction uses the `readability` crate. Prompt added to existing `prompts.py` rather than a separate file.
+> **Implementation Notes:** Implemented with a simpler architecture than originally planned. Summary is posted as a reply (not a thread — too noisy). Deduplication uses the bot's own ✅ reaction on the original message (no Redis/DynamoDB needed — will migrate to DynamoDB in Feature 3). Article fetching uses `reqwest::blocking::Client` with browser User-Agent + `readability::extractor::extract()`. Prompt added to existing `prompts.py` rather than a separate file.
 
 ### Architecture Changes Required
 
 #### ~~1.1 State Management Layer~~ (Implemented 2026-02-13)
 **Problem:** Need to track which URLs have been summarized to avoid duplication.
 
-**Implemented Solution:** Bot reacts with 📖 on the original message after posting the summary. Dedup check uses `msg.reactions` with `me: true` — zero extra API calls, persists on Discord's side, survives bot restarts. No external cache needed.
+**Implemented Solution (current):** Bot reacts with ✅ on the original message after posting the summary. Dedup check uses `msg.reactions` with `me: true` — zero extra API calls, persists on Discord's side, survives bot restarts. No external cache needed.
+
+> **Note:** This will be superseded by DynamoDB-based dedup (URL hash lookup in `albert-articles` table) during the AWS migration (Feature 3). Required because `/summary-article` slash command has no target message to react to, and dedup needs to work across servers.
 
 <details>
 <summary>Original options considered</summary>
@@ -43,14 +45,14 @@ Enable users to summarize linked articles by adding an emoji reaction. ~~The sum
 
 Implemented as free functions (no struct needed without Redis):
 - `extract_url(content: &str) -> Option<String>` — finds first HTTP(S) URL
-- `fetch_article_text(url: &str) -> Result<String>` — uses `readability::extractor::scrape()`
-- `bot_already_replied(msg: &Message) -> bool` — checks bot's own 📖 reaction
+- `fetch_article_text(url: &str) -> Result<String>` — fetches HTML via `reqwest::blocking::Client` with browser User-Agent, then extracts content with `readability::extractor::extract()` (updated 2026-02-16, was `scrape()` which got blocked by news sites)
+- `bot_already_replied(msg: &Message) -> bool` — checks bot's own ✅ reaction (updated 2026-02-16, was 📖 which retriggered summarization)
 
 **Dependencies added:**
-- `reqwest` (with `rustls-tls`) - HTTP client (used internally by readability)
-- `readability` - HTML parsing and article extraction
+- `reqwest` (with `rustls-tls`, `blocking`) - HTTP client for article fetching with custom User-Agent
+- `readability` - HTML parsing and article content extraction
 
-**Not needed:** `url` crate (reqwest validates), `redis` (bot reaction dedup)
+**Not needed:** `url` crate (reqwest re-exports `url::Url`), `redis` (bot reaction dedup)
 
 #### ~~1.3 Updated Event Handler~~ (Implemented 2026-02-13)
 **Modified `rust_bot/src/handle_events.rs`:**
@@ -62,7 +64,7 @@ Added `📖` (`\u{1F4D6}`) branch in `reaction_add()`:
 4. Dispatch `Job::SummarizeArticle` to worker queue
 
 #### ~~1.4 Summary Delivery~~ (Implemented 2026-02-13)
-Originally planned as thread creation. Changed to **reply to original message** (less noisy) + bot 📖 reaction as dedup marker. Implemented in `summarize_article()` in `rust_bot/src/bot_functions.rs`.
+Originally planned as thread creation. Changed to **reply to original message** (less noisy) + bot ✅ reaction as dedup marker (updated 2026-02-16, was 📖). Implemented in `summarize_article()` in `rust_bot/src/bot_functions.rs`.
 
 #### ~~1.5 Python LLM Updates~~ (Implemented 2026-02-13)
 Added `ARTICLE_SUMMARIZATION` prompt to existing `python_llm/src/utils/prompts.py` (no separate file needed). Outputs main takeaway + key points as bullet points.
@@ -88,7 +90,7 @@ Also hardened `python_llm/src/utils/output_structures.py` parser with 3 fallback
 
 **Phase 3: Polish**
 9. ~~Add error handling for bad URLs, timeouts, paywalls~~ ✅
-10. ~~Implement deduplication checks~~ ✅ (bot 📖 reaction)
+10. ~~Implement deduplication checks~~ ✅ (bot ✅ reaction, migrating to DynamoDB)
 11. Add logging and monitoring — basic `println`/`eprintln` only
 12. Integration testing with various article types — manual testing done
 
@@ -125,69 +127,23 @@ Instead of storing raw messages, store only:
 2. User questions and bot responses in DM
 3. TTL-based expiration
 
-**Storage Model:**
-```
-DM_Conversation {
-  user_id: u64,
-  conversation_id: Uuid,
-  original_summary: String,        // From server
-  original_context: String,        // Minimal metadata (channel, date)
-  qa_history: Vec<QAPair>,         // User questions + bot answers
-  created_at: Timestamp,
-  expires_at: Timestamp,           // E.g., 24 hours
-}
-```
+**Storage Model:** `DM_Conversation` with user_id, conversation_id, original_summary, original_context, qa_history, timestamps, and 24h TTL. See `implement_strats.md` for schema.
 
 #### 2.2 Conversation State Management
 
-**Option A: Stateful Session Store (Redis)**
-```
-Key: dm_session:{user_id}:{conversation_id}
-Value: {
-  summary: "...",
-  context: "...",
-  messages: [
-    {role: "user", content: "..."},
-    {role: "assistant", content: "..."}
-  ],
-  ttl: 86400  // 24 hours
-}
-```
+**Option A: Stateful Session Store (DynamoDB)** — Store session with summary, context, message history, and TTL. See `implement_strats.md` for schema.
 
-**Option B: Embed Context in Each Message (Stateless)**
-- Reconstruct conversation from last N DM messages
-- No external state needed
-- Higher token usage, more processing
+**Option B: Embed Context in Each Message (Stateless)** — Reconstruct conversation from last N DM messages. No external state needed, but higher token usage.
 
-**Recommendation:** Option A for better UX and token efficiency.
+**Decision:** Option A (DynamoDB) for better UX, token efficiency, and serverless compatibility.
 
 #### 2.3 Conversation Lifecycle
 
-**Trigger:** When bot sends initial DM with summary
-```rust
-// After sending summary DM
-create_dm_session(
-    user_id: reaction.user_id,
-    summary: model_response,
-    context: ChannelContext { channel_name, timestamp }
-);
-```
+- **Trigger:** Bot creates DM session in DynamoDB after sending ephemeral summary
+- **Continuation:** When user DMs the bot, look up active session by user_id and handle follow-up
+- **Expiration:** DynamoDB TTL auto-deletes sessions after 24 hours
 
-**Continuation:** When user replies to DM
-```rust
-async fn message(&self, ctx: Context, msg: Message) {
-    if msg.guild_id.is_none() {  // Is DM
-        if let Some(session) = get_dm_session(msg.author.id).await {
-            // User is in active Q&A session
-            handle_followup_question(ctx, msg, session).await;
-        }
-    }
-}
-```
-
-**Expiration:** TTL-based cleanup
-- Redis: Automatic TTL expiration
-- DynamoDB: TTL attribute with DynamoDB Streams cleanup
+See `implement_strats.md` for code examples.
 
 #### 2.4 Context Window Management
 
@@ -196,41 +152,32 @@ async fn message(&self, ctx: Context, msg: Message) {
 2. **Token budget:** Dynamically trim based on context length
 3. **Summary compression:** Re-summarize Q&A history if it grows too large
 
-**Implementation in `model_chain.py`:**
-```python
-def build_qa_prompt(summary: str, qa_history: List[dict], user_question: str) -> str:
-    # Keep original summary always
-    # Include last 3-5 Q&A pairs
-    # Add current question
-    
-    context_tokens = estimate_tokens(summary + format_qa_history(qa_history))
-    if context_tokens > MAX_CONTEXT_TOKENS:
-        qa_history = compress_qa_history(qa_history)  # Keep only recent ones
-    
-    return construct_prompt(summary, qa_history, user_question)
-```
+**Implementation:** Will be in Rust with Bedrock (Python LLM being removed in Feature 3). See `implement_strats.md` for conceptual code example.
 
 ### Implementation Steps
 
-**Phase 1: DM Detection & Session Management (Week 1)**
-1. ✅ Add DM message event handler
-2. ✅ Implement session storage (Redis/DynamoDB)
-3. ✅ Create session on initial summary send
-4. ✅ Add session lookup on DM receive
+**Phase 1: DM Detection & Session Management**
+1. Add DM interaction handler (slash command or button-triggered, not reaction-based)
+2. Implement session storage in DynamoDB (`albert-dm-sessions` table from Feature 3)
+3. Create session on initial summary send
+4. Add session lookup on DM receive
 
-**Phase 2: Q&A Pipeline (Week 2)**
-5. ✅ Create Q&A prompt template in Python
-6. ✅ Modify Python LLM to accept conversation history
-7. ✅ Implement context window management
-8. ✅ Add conversation history formatting
+**Phase 2: Q&A Pipeline**
 
-**Phase 3: UX & Edge Cases (Week 3)**
-9. ✅ Add "end conversation" command or auto-expire notification
-10. ✅ Handle multiple concurrent conversations per user
-11. ✅ Add typing indicators while processing
-12. ✅ Graceful handling of expired sessions
+5. Create Q&A prompt for Bedrock (Claude 3.5 Haiku)
+6. Implement conversation history formatting in Rust
+7. Implement context window management (sliding window + token budget)
+8. Add Bedrock call with conversation context
+
+**Phase 3: UX & Edge Cases**
+
+9. Add session expiry notification (auto-expire after 24 hours)
+10. Handle multiple concurrent conversations per user
+11. Add deferred response ("thinking...") while processing
+12. Graceful handling of expired sessions
 
 **Phase 4: Unit Tests (Week 4)**
+
 13. Unit tests for session creation, lookup, and expiration
 14. Unit tests for DM message routing (guild vs DM detection)
 15. Unit tests for Q&A prompt construction and context window trimming
@@ -252,25 +199,23 @@ def build_qa_prompt(summary: str, qa_history: List[dict], user_question: str) ->
 ### User Experience Flow
 
 ```
-1. User reacts with 🤖 to channel messages
-   → Bot DMs user with summary
-   → Bot creates DM session (24h TTL)
+1. User runs /summary-24hr or /summary-perUser
+   → Bot sends ephemeral summary to user
+   → Bot creates DM session in DynamoDB (24h TTL)
+   → Ephemeral message includes "Ask me follow-up questions in DMs!"
 
-2. User receives DM: "Here's your summary... [summary text]
-   You can ask me follow-up questions about this for the next 24 hours!"
-
-3. User replies in DM: "What was the consensus on topic X?"
-   → Bot retrieves session
-   → Bot generates answer with full context
+2. User DMs the bot: "What was the consensus on topic X?"
+   → Bot looks up active session in DynamoDB
+   → Bot generates answer via Bedrock with full context
    → Bot updates session history
 
-4. User asks another question: "Any dissenting opinions?"
+3. User asks another question: "Any dissenting opinions?"
    → Bot has context from previous questions
    → Bot provides coherent, contextual answer
 
-5. After 24 hours or user sends "!end"
-   → Session expires
-   → Bot notifies: "This conversation has ended. React to new messages to start fresh!"
+4. After 24 hours
+   → Session TTL expires in DynamoDB
+   → Bot notifies: "This conversation has ended. Use /summary-24hr to start fresh!"
 ```
 
 ---
@@ -303,23 +248,48 @@ Migrate from local deployment to AWS serverless architecture for scalability, co
 ```
 
 ### Target Architecture
+
+**Decision:** Lambda + API Gateway (HTTP) over ECS Fargate. At low-to-moderate scale, Lambda's pay-per-invocation model costs ~$0.01-$0.65/month for compute vs Fargate's fixed ~$9/month. As scale grows, Bedrock token costs dominate either way (88%+ of total bill at 500 servers), so the infrastructure choice matters less — but Lambda gives better unit economics before the first paying customer.
+
+**Decision:** Discord HTTP Interactions model (slash commands + message context menu) replaces Gateway WebSocket + emoji reactions. Required for Lambda (no persistent WebSocket), and slash command invocations are invisible to other channel members — better UX for a multi-server product.
+
+**New interaction model:**
+| Current (reactions) | New (interactions) |
+|---|---|
+| React 📄 anywhere | `/summary-24hr` slash command (ephemeral) |
+| React 📑 anywhere | `/summary-perUser` slash command (ephemeral) |
+| React 📖 on message with URL | Right-click message > Apps > Summarize Article (visible reply) |
+| (no equivalent) | `/summary-article url:<link>` slash command (ephemeral, user-only) |
+
 ```
 ┌─────────────────┐
 │  Discord Server │
+│  (slash cmd /   │
+│   context menu) │
 └────────┬────────┘
-         │
+         │ HTTP POST
          v
 ┌──────────────────────────────────────┐
-│         API Gateway (REST)           │
-│   POST /discord-webhook              │
+│      API Gateway (HTTP API)          │
+│   POST /discord-interactions         │
+│   ~$1.00/1M requests                 │
 └────────┬─────────────────────────────┘
          │
          v
 ┌──────────────────────────────────────┐
-│   Lambda Function (Rust)             │
-│   - discord-event-handler            │
-│   - Parse Discord events             │
-│   - Route to appropriate handler     │
+│   Lambda A — "Gateway" (Rust)        │
+│   - Verify Discord signature         │
+│   - ACK within 3 seconds             │
+│   - Return DEFERRED response         │
+│   - Invoke Lambda B async            │
+└────────┬─────────────────────────────┘
+         │ async invoke
+         v
+┌──────────────────────────────────────┐
+│   Lambda B — "Worker" (Rust)         │
+│   - Fetch article / channel messages │
+│   - Call Bedrock for summarization   │
+│   - POST followup via Discord webhook│
 └────────┬─────────────────────────────┘
          │
          ├─────────────────────────────┐
@@ -327,18 +297,13 @@ Migrate from local deployment to AWS serverless architecture for scalability, co
          v                             v
 ┌─────────────────┐         ┌──────────────────────┐
 │  DynamoDB       │         │  Bedrock Runtime API │
-│  - Summaries    │         │  - Claude/Titan      │
-│  - DM Sessions  │         │  - Managed inference │
+│  - Summaries    │         │  - Claude 3.5 Haiku  │
+│  - DM Sessions  │         │  - Pay per token     │
 │  - Cache        │         └──────────────────────┘
 └─────────────────┘
-         │
-         v
-┌─────────────────┐
-│  S3 (Optional)  │
-│  - Long content │
-│  - Logs         │
-└─────────────────┘
 ```
+
+**Why two Lambdas:** Discord requires an interaction response within 3 seconds. Bedrock inference takes longer. Lambda A immediately returns a deferred response ("Bot is thinking..."), then asynchronously invokes Lambda B which does the actual work and posts the result via Discord's followup webhook. This mirrors the current MPSC worker queue pattern.
 
 ### Migration Components
 
@@ -352,389 +317,160 @@ Migrate from local deployment to AWS serverless architecture for scalability, co
 - ✅ Built-in guardrails and content filtering
 
 **Model Selection:**
-- **Claude 3 Haiku:** Fast, cost-effective for summarization ($0.25/1M input tokens)
-- **Claude 3 Sonnet:** Better quality if needed ($3/1M input tokens)
-- **Titan Text Express:** Cheapest option ($0.13/1M tokens)
+- **Claude 3.5 Haiku (selected):** Fast, cost-effective for summarization ($1.00/1M input tokens, $5.00/1M output tokens)
+- **Claude 3.5 Sonnet:** Better quality if needed ($3.00/1M input tokens, $15.00/1M output tokens)
 
 **Code Changes Required:**
+- **Remove:** `python_llm/` entire directory, `rust_bot/src/python_runner.rs`, file-based IPC
+- **Add:** `BedrockClient` struct in Rust using `aws-sdk-bedrockruntime` with Claude 3.5 Haiku model ID
 
-**Remove:** `python_llm/` entire directory
+See `implement_strats.md` for BedrockClient code example.
 
-**Add:** Rust AWS SDK integration
-```rust
-// New file: rust_bot/src/bedrock_client.rs
-use aws_sdk_bedrockruntime::{Client, types::ContentBlock};
+#### 3.2 Rust Lambda Functions (Two-Lambda Pattern)
 
-pub struct BedrockClient {
-    client: Client,
-    model_id: String,
-}
+**Architecture Decision:** Two Lambdas — a lightweight Gateway (Lambda A) for fast ACK + signature verification, and a Worker (Lambda B) for Bedrock calls and Discord followups. Required because Discord's 3-second deadline conflicts with LLM inference time. Lambda A invokes Lambda B asynchronously via `InvocationType::Event`.
 
-impl BedrockClient {
-    pub async fn new() -> Self {
-        let config = aws_config::load_from_env().await;
-        let client = Client::new(&config);
-        Self {
-            client,
-            model_id: "anthropic.claude-3-haiku-20240307-v1:0".to_string(),
-        }
-    }
+- **Lambda A (Gateway):** Verifies Discord signature, handles Ping for endpoint verification, returns deferred ACK for application commands, invokes Lambda B async
+- **Lambda B (Worker):** Dispatches by command name (`summary-24hr`, `summary-perUser`, `summary-article`, `Summarize Article` context menu), calls Bedrock, posts followup via Discord webhook
+- **Key dependencies:** `lambda_runtime`, `aws-sdk-lambda`, `aws-sdk-bedrockruntime`, `aws-sdk-dynamodb`, `ed25519-dalek`, `reqwest`
 
-    pub async fn generate_summary(&self, content: String) -> Result<String, Error> {
-        let prompt = format!(
-            "Summarize the following Discord conversation:\n\n{}",
-            content
-        );
+See `implement_strats.md` for handler code and full dependency list.
 
-        let response = self.client
-            .invoke_model()
-            .model_id(&self.model_id)
-            .body(/* Claude API format */)
-            .send()
-            .await?;
+#### 3.3 Discord HTTP Interactions (Slash Commands + Context Menu)
 
-        // Parse response
-        Ok(extract_text_from_response(response))
-    }
-}
-```
+**Current:** Bot maintains Gateway WebSocket, triggers on emoji reactions
 
-**Remove Python subprocess calls:**
-```rust
-// DELETE: rust_bot/src/python_runner.rs
-// DELETE: File I/O for message passing
-// REPLACE WITH: Direct Bedrock API calls
-```
+**New:** Discord sends HTTP POST to API Gateway → Lambda on every slash command / context menu interaction. No persistent connection.
 
-#### 3.2 Rust Lambda Function
+**Commands to register:**
+1. `/summary-24hr` — Slash command for standard 24-hour chat summary. Ephemeral response (only invoking user sees it).
+2. `/summary-perUser` — Slash command for per-user chat summary breakdown. Ephemeral response.
+3. `/summary-article` — Slash command with required `url` parameter. User pastes a URL directly. **Ephemeral response (only invoking user sees it)** — prevents spam in shared channels.
+4. `Summarize Article` — Message context menu command (right-click message → Apps → Summarize Article). Extracts URL from the target message. **Visible reply to original message** — shared with the whole channel so the group benefits.
 
-**Architecture Decision:**
-- **Single Lambda** for all Discord events (simpler, less cold start)
-- OR **Multiple Lambdas** per event type (better separation, more complex)
+Two ways to trigger article summarization with different visibility: context menu for shared summaries, slash command for personal use.
 
-**Recommendation:** Start with single Lambda, split later if needed.
-
-**Lambda Handler Structure:**
-```rust
-// rust_bot/src/lambda_handler.rs
-use lambda_runtime::{service_fn, LambdaEvent, Error};
-use serde_json::Value;
-
-async fn function_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
-    let discord_event = parse_discord_event(event.payload)?;
-    
-    match discord_event.event_type {
-        "reaction_add" => handle_reaction(discord_event).await,
-        "message_create" => handle_message(discord_event).await,
-        _ => Ok(json!({"statusCode": 200}))
-    }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    lambda_runtime::run(service_fn(function_handler)).await
-}
-```
-
-**Dependencies to add:**
-```toml
-[dependencies]
-lambda_runtime = "0.8"
-tokio = { version = "1", features = ["full"] }
-aws-config = "1.0"
-aws-sdk-bedrockruntime = "1.0"
-aws-sdk-dynamodb = "1.0"
-serde_json = "1.0"
-```
-
-#### 3.3 Discord Webhook Integration
-
-**Current:** Bot maintains WebSocket connection to Discord
-
-**New:** Discord sends events to API Gateway → Lambda
+**Article dedup:** Moves from bot reaction (✅) to **DynamoDB lookup by URL hash** (`albert-articles` table). Works for both trigger paths (context menu and slash command) and across servers. The ✅ reaction is still added to the original message on the context menu path as a visual indicator, but the authoritative dedup check is DynamoDB.
 
 **Setup Steps:**
-1. Register slash commands via Discord Developer Portal
-2. Configure Interactions Endpoint URL: `https://your-api-gateway.amazonaws.com/discord-webhook`
-3. Verify webhook signature in Lambda
-4. Respond within 3 seconds (Discord requirement)
+1. Register commands via Discord API (`PUT /applications/{app_id}/commands`)
+2. Configure Interactions Endpoint URL in Discord Developer Portal: `https://{api-gw-id}.execute-api.{region}.amazonaws.com/discord-interactions`
+3. Lambda A verifies webhook signature on every request
+4. Lambda A returns deferred ACK within 3 seconds, invokes Lambda B async
 
-**Webhook Verification:**
-```rust
-fn verify_discord_signature(
-    signature: &str,
-    timestamp: &str,
-    body: &str,
-    public_key: &str,
-) -> bool {
-    // Use ed25519-dalek to verify Discord's signature
-    // Prevents unauthorized webhook calls
-}
-```
+**Webhook Verification (Lambda A):** Uses `ed25519-dalek` to verify Discord's signature on every request. See `implement_strats.md` for code example.
 
-**3-Second Response Challenge:**
-- Acknowledge immediately: Return 200 OK
-- Process asynchronously: Invoke another Lambda or use SQS
-- Use Discord's follow-up endpoint for delayed responses
+**Ephemeral vs Visible Responses:**
+- `/summary-24hr`, `/summary-perUser`, `/summary-article` — **Ephemeral** (only visible to the invoking user). Prevents channel spam.
+- `Summarize Article` context menu — **Visible reply** to the original message. The whole channel sees the summary, and the bot adds a ✅ reaction as a visual indicator that the article has been summarized.
 
-```rust
-async fn function_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
-    // Immediate ACK
-    let ack_response = json!({ "type": 5 }); // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
-    
-    // Spawn async task for processing
-    tokio::spawn(async move {
-        process_event_async(event).await;
-        // Use Discord webhook to send follow-up
-    });
-    
-    Ok(ack_response)
-}
-```
+**3-Second Response — Two-Lambda Pattern:**
+
+Lambda A returns a deferred ACK and invokes Lambda B via `InvocationType::Event` (async, fire-and-forget). Important: `tokio::spawn` won't work in Lambda — the runtime freezes after returning, so spawned tasks never complete. Lambda B posts results via Discord's interaction followup webhook (`PATCH /webhooks/{app_id}/{token}/messages/@original`).
+
+See `implement_strats.md` for the full two-Lambda code pattern.
 
 #### 3.4 State Management with DynamoDB
 
 **Tables Needed:**
 
-**1. Summaries Cache:**
-```
-Table: albert-summaries
-Partition Key: message_id (String)
-Attributes:
-  - summary (String)
-  - channel_id (String)
-  - user_id (String)
-  - created_at (Number)
-  - ttl (Number)  // Auto-delete after 7 days
-```
+1. **`albert-summaries`** — Cache chat summaries. Partition key: `message_id`. TTL: 7 days.
+2. **`albert-articles`** — Cache article summaries + dedup. Partition key: `url_hash`. Includes `guild_id` for multi-server tracking. TTL: configurable.
+3. **`albert-dm-sessions`** — Q&A conversation state (Feature 2). Partition key: `user_id`, sort key: `session_id`. TTL: 24 hours.
 
-**2. Article Cache:**
-```
-Table: albert-articles
-Partition Key: url_hash (String)
-Attributes:
-  - url (String)
-  - summary (String)
-  - message_id (String)
-  - thread_id (String)
-  - created_at (Number)
-  - ttl (Number)
-```
+All tables use pay-per-request billing. `StateManager` struct in Rust wraps the DynamoDB client for CRUD operations.
 
-**3. DM Sessions:**
-```
-Table: albert-dm-sessions
-Partition Key: user_id (String)
-Sort Key: session_id (String)
-Attributes:
-  - summary (String)
-  - context (Map)
-  - qa_history (List)
-  - created_at (Number)
-  - ttl (Number)  // Auto-delete after 24 hours
-```
-
-**DynamoDB Client in Rust:**
-```rust
-use aws_sdk_dynamodb::Client;
-
-pub struct StateManager {
-    client: Client,
-}
-
-impl StateManager {
-    pub async fn get_summary(&self, message_id: &str) -> Option<String> {
-        let result = self.client
-            .get_item()
-            .table_name("albert-summaries")
-            .key("message_id", AttributeValue::S(message_id.to_string()))
-            .send()
-            .await
-            .ok()?;
-        
-        result.item?.get("summary")?.as_s().ok().cloned()
-    }
-
-    pub async fn store_summary(&self, message_id: &str, summary: &str) {
-        let ttl = current_timestamp() + 604800; // 7 days
-        
-        self.client
-            .put_item()
-            .table_name("albert-summaries")
-            .item("message_id", AttributeValue::S(message_id.to_string()))
-            .item("summary", AttributeValue::S(summary.to_string()))
-            .item("ttl", AttributeValue::N(ttl.to_string()))
-            .send()
-            .await
-            .ok();
-    }
-}
-```
+See `implement_strats.md` for full table schemas and Rust client code.
 
 #### 3.5 Deployment & CI/CD
 
 **Infrastructure as Code (Terraform):**
 
-```hcl
-# infrastructure/main.tf
-
-# Lambda Function
-resource "aws_lambda_function" "albert_bot" {
-  filename      = "target/lambda/bootstrap.zip"
-  function_name = "albert-discord-bot"
-  role          = aws_iam_role.lambda_exec.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2"
-  timeout       = 30
-  memory_size   = 512
-
-  environment {
-    variables = {
-      DISCORD_PUBLIC_KEY = var.discord_public_key
-      DISCORD_BOT_TOKEN  = var.discord_bot_token
-    }
-  }
-}
-
-# API Gateway
-resource "aws_apigatewayv2_api" "discord_webhook" {
-  name          = "albert-discord-api"
-  protocol_type = "HTTP"
-}
-
-resource "aws_apigatewayv2_integration" "lambda" {
-  api_id           = aws_apigatewayv2_api.discord_webhook.id
-  integration_type = "AWS_PROXY"
-  integration_uri  = aws_lambda_function.albert_bot.invoke_arn
-}
-
-# DynamoDB Tables
-resource "aws_dynamodb_table" "summaries" {
-  name         = "albert-summaries"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "message_id"
-
-  attribute {
-    name = "message_id"
-    type = "S"
-  }
-
-  ttl {
-    attribute_name = "ttl"
-    enabled        = true
-  }
-}
-
-# Similar for other tables...
-```
+Resources in `infrastructure/main.tf`:
+- **Lambda A (Gateway):** `provided.al2023` runtime, 5s timeout, 128MB memory. Env vars: `DISCORD_PUBLIC_KEY`, `WORKER_FUNCTION`
+- **Lambda B (Worker):** `provided.al2023` runtime, 60s timeout, 256MB memory. Env var: `DISCORD_BOT_TOKEN`
+- **API Gateway:** HTTP API (cheaper than REST), routes to Lambda A
+- **DynamoDB tables:** `albert-articles`, `albert-summaries`, `albert-dm-sessions` — all pay-per-request with TTL enabled
 
 **GitHub Actions CI/CD:**
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy Albert to AWS
+- Trigger: push to `main`
+- Build both Lambdas with `cargo build --release --target x86_64-unknown-linux-musl`
+- Deploy with `terraform apply`
 
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-unknown-linux-musl
-      
-      - name: Build Lambda
-        run: |
-          cargo build --release --target x86_64-unknown-linux-musl
-          cp target/x86_64-unknown-linux-musl/release/albert bootstrap
-          zip lambda.zip bootstrap
-      
-      - name: Deploy with Terraform
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          cd infrastructure
-          terraform init
-          terraform apply -auto-approve
-```
+See `implement_strats.md` for full Terraform HCL and GitHub Actions YAML.
 
 ### Migration Steps (Phased Rollout)
 
-**Phase 0: Preparation (Week 1)**
-1. ✅ Set up AWS account and configure IAM roles
-2. ✅ Create DynamoDB tables with Terraform
-3. ✅ Set up dev/staging environments
-4. ✅ Prototype Bedrock API calls
+**Phase 0: Preparation**
+1. Set up AWS account and configure IAM roles
+   - **Your IAM user/group (for Terraform deploys):** `AmazonBedrockFullAccess`, `AWSLambda_FullAccess`, `AmazonAPIGatewayAdministrator`, `AmazonDynamoDBFullAccess`, `IAMFullAccess`, `CloudWatchFullAccessV2`
+   - **Lambda A execution role:** `lambda:InvokeFunction` (to call Lambda B), CloudWatch Logs
+   - **Lambda B execution role:** `bedrock:InvokeModel` (scoped to Claude 3.5 Haiku ARN), DynamoDB CRUD (scoped to `albert-*` tables), CloudWatch Logs
+2. Create DynamoDB tables with Terraform
+3. Set up dev/staging environments
+4. Prototype Bedrock API calls locally
 
-**Phase 1: Bedrock Integration (Week 2)**
-5. ✅ Add AWS SDK dependencies to Rust project
-6. ✅ Implement BedrockClient with Claude/Titan
-7. ✅ Replace Python LLM calls with Bedrock calls
-8. ✅ Test locally with both systems in parallel
-9. ✅ Validate output quality and latency
+**Phase 1: Slash Commands (local, Gateway-based)** — DONE (2026-02-16)
+5. ~~Register `/summary-24hr`, `/summary-perUser`, `/summary-article` slash commands and `Summarize Article` message context menu via Discord API~~ ✅
+6. ~~Implement interaction handlers in Serenity (works over Gateway WebSocket for local testing)~~ ✅
+7. ~~Add ephemeral responses for chat summaries~~ ✅
+8. ~~Test locally — validate slash commands and context menu work end-to-end~~ ✅
+9. Remove reaction-based triggers once slash commands are confirmed working
 
-**Phase 2: Lambda Conversion (Week 3)**
-10. ✅ Convert Serenity event handlers to Lambda handlers
-11. ✅ Implement webhook signature verification
-12. ✅ Add DynamoDB state management
-13. ✅ Handle 3-second timeout requirement
-14. ✅ Local testing with Lambda runtime emulator
+> **Implementation Notes (Phase 1):** Added `ResponseTarget` enum (`response_target.rs`) to decouple delivery mechanism from trigger type — reactions and interactions share the same worker queue and bot_functions. Decoupled `get_messages()` and `get_channel_name()` from `Reaction`/`Message` types (now take `ChannelId`). Commands registered via `Command::set_global_commands()` in `ready()`. Context menu dedup re-fetches message via API (Discord resolved data omits reactions). Error recovery: interaction variants get error message edited into deferred response instead of silent timeout. Bot OAuth2 URL needs `applications.commands` scope. Both trigger paths (reactions + slash commands) coexist.
 
-**Phase 3: Infrastructure Setup (Week 4)**
-15. ✅ Deploy API Gateway and Lambda with Terraform
-16. ✅ Configure Discord webhook endpoint
-17. ✅ Set up CloudWatch logging and monitoring
-18. ✅ Configure alerts for errors and latency
+**Phase 2: Bedrock Integration (local)**
+10. Add AWS SDK dependencies to Rust project
+11. Implement BedrockClient with Claude 3.5 Haiku
+12. Replace Python subprocess calls with direct Bedrock API calls
+13. Test locally — validate output quality and latency vs Mistral-7B
+14. Remove `python_llm/`, `python_runner.rs`, file-based IPC
 
-**Phase 4: Migration & Cutover (Week 5)**
-19. ✅ Deploy to staging environment
-20. ✅ Run parallel testing (old bot + new Lambda)
-21. ✅ Monitor for 48 hours
-22. ✅ Gradual traffic shift (10% → 50% → 100%)
-23. ✅ Decommission local bot
+**Phase 3: Lambda Conversion**
+15. Create Lambda A (Gateway) — signature verification, deferred ACK, async invoke
+16. Create Lambda B (Worker) — Bedrock calls, Discord followup webhook, DynamoDB
+17. Implement ed25519 signature verification
+18. Local testing with `cargo lambda` / SAM CLI
 
-**Phase 5: Optimization (Week 6)**
-24. ✅ Implement Lambda provisioned concurrency if needed
-25. ✅ Optimize cold start times
-26. ✅ Fine-tune Bedrock prompts
-27. ✅ Set up cost monitoring and budgets
+**Phase 4: Infrastructure & Deploy**
+19. Deploy API Gateway (HTTP) + both Lambdas with Terraform
+20. Configure Discord Interactions Endpoint URL to API Gateway
+21. Set up CloudWatch logging, monitoring, and cost alerts
+22. Deploy to staging, test for 48 hours
+23. Cut over to production
 
-**Phase 6: Unit Tests (Week 7)**
+**Phase 5: Optimization**
+24. Optimize Lambda cold start times (binary size, provisioned concurrency if needed)
+25. Fine-tune Bedrock prompts for Claude 3.5 Haiku
+26. Implement summary caching in DynamoDB to reduce duplicate Bedrock calls
+27. Set up billing alerts and per-user rate limiting
+28. Tighten IAM user/group policies — replace broad managed policies (e.g. `FullAccess`) with scoped custom policies limited to only the resources this project uses. The Lambda execution roles should already be minimal from Phase 0.
+
+**Phase 6: Unit Tests**
 28. Unit tests for BedrockClient — mock API responses, error handling, token limits
-29. Unit tests for webhook signature verification
+29. Unit tests for webhook signature verification (ed25519)
 30. Unit tests for DynamoDB state manager — CRUD operations, TTL behavior
-31. Unit tests for Lambda handler routing — event parsing, response formatting
-32. Unit tests for 3-second timeout handling and async deferral
-33. Integration test for full Lambda pipeline (mock API Gateway + Bedrock + DynamoDB)
+31. Unit tests for Lambda A routing — interaction type parsing, deferred response format
+32. Unit tests for Lambda B — slash command dispatch, context menu dispatch, followup webhook
+33. Integration test for full pipeline (mock API Gateway + Bedrock + DynamoDB + Discord webhook)
 
-### Cost Estimation (Monthly)
+### Cost Estimation (Monthly) — Lambda + API Gateway + Bedrock
 
-**Current (Local Deployment):**
-- Server: $50-100/month (assuming small VPS)
-- GPU instance: $200-500/month (if using GPU)
-- **Total:** ~$250-600/month + maintenance time
+**Assumptions per request:** ~2,000 input tokens, ~500 output tokens, ~10s Lambda execution at 256MB.
 
-**New (AWS Serverless):**
-- Lambda:
-  - 100,000 invocations/month: ~$0.20
-  - 30M compute-seconds: ~$5.00
-- Bedrock (Claude Haiku):
-  - 10M input tokens: ~$2.50
-  - 2M output tokens: ~$3.00
-- DynamoDB:
-  - Pay-per-request: ~$1-5/month
-- API Gateway:
-  - 100K requests: ~$0.10
-- **Total:** ~$12-16/month
+| Component | Rate | Small (10 servers, 300 req/mo) | Medium (100 servers, 3K req/mo) | Large (500 servers, 15K req/mo) |
+|---|---|---|---|---|
+| **Lambda compute** | $0.0000166667/GB-s | $0.01 | $0.13 | $0.63 |
+| **Lambda requests** | $0.20/1M | $0.00 | $0.00 | $0.00 |
+| **API Gateway HTTP** | $1.00/1M | $0.00 | $0.00 | $0.02 |
+| **Bedrock input** (Claude 3.5 Haiku) | $0.001/1K tokens | $0.60 | $6.00 | $30.00 |
+| **Bedrock output** (Claude 3.5 Haiku) | $0.005/1K tokens | $0.75 | $7.50 | $37.50 |
+| **DynamoDB** | Pay-per-request | ~$0.50 | ~$1.00 | ~$3.00 |
+| **Total** | | **~$1.86** | **~$14.63** | **~$71.15** |
 
-**Savings:** ~95% cost reduction + no maintenance overhead
+Key insight: Bedrock token costs are 88%+ of the total bill at scale. The infrastructure (Lambda + APIGW) is nearly free. The main lever for profitability is managing token usage — input length limits, summary caching in DynamoDB, and potentially Bedrock batch pricing for non-urgent requests.
+
+**For comparison — ECS Fargate would add a flat ~$9/month** for a 24/7 container (0.25 vCPU, 0.5GB RAM) regardless of usage. Meaningful at small scale, negligible at large scale.
 
 ### Monitoring & Observability
 
@@ -757,26 +493,7 @@ Dashboard: Albert Bot Metrics
 - DynamoDB throttling
 - Monthly cost exceeds $50
 
-**Logging Strategy:**
-```rust
-use tracing::{info, error, warn};
-
-#[tracing::instrument]
-async fn handle_reaction(event: DiscordEvent) -> Result<(), Error> {
-    info!("Processing reaction event");
-    
-    match process_reaction(&event).await {
-        Ok(summary) => {
-            info!(message_id = %event.message_id, "Summary generated");
-            Ok(())
-        }
-        Err(e) => {
-            error!(error = %e, "Failed to generate summary");
-            Err(e)
-        }
-    }
-}
-```
+**Logging Strategy:** Use `tracing` crate with structured logging. Instrument handlers with `#[tracing::instrument]`, log guild_id on success and error details on failure. CloudWatch receives logs automatically from Lambda. See `implement_strats.md` for code example.
 
 ### Rollback Plan
 
@@ -785,17 +502,7 @@ async fn handle_reaction(event: DiscordEvent) -> Result<(), Error> {
 2. Keep old bot running until migration is stable
 3. DynamoDB data can be exported and imported to local DB if needed
 
-**Feature flags:**
-```rust
-const USE_BEDROCK: bool = env::var("USE_BEDROCK")
-    .unwrap_or_else(|_| "true".to_string()) == "true";
-
-if USE_BEDROCK {
-    bedrock_client.generate_summary(content).await
-} else {
-    python_runner::run_python(&filepath) // Fallback to old system
-}
-```
+**Rollback strategy:** Keep the current Serenity Gateway bot running in parallel during migration. If Lambda has issues, revert the Discord Interactions Endpoint URL back to empty (re-enables Gateway event handling). No code-level feature flags needed — the switch is at the Discord configuration level.
 
 ---
 
@@ -805,7 +512,7 @@ if USE_BEDROCK {
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Bedrock quality worse than local model | High | Medium | A/B test responses, keep local model as fallback initially |
+| Bedrock prompt tuning needed for new model | Low | Medium | Claude 3.5 Haiku is significantly more capable than Mistral-7B — main risk is prompt format differences, not quality |
 | Lambda cold starts cause timeouts | Medium | High | Use provisioned concurrency for critical functions, optimize binary size |
 | DynamoDB costs exceed estimates | Low | Low | Set up billing alerts, use on-demand pricing initially |
 | Article fetching blocked by sites | Medium | High | Implement retry logic, add user-agent rotation, graceful degradation |
@@ -826,8 +533,8 @@ if USE_BEDROCK {
 
 ### Feature 1 (Article Summarization)
 - [ ] 90%+ of article URLs successfully fetched and parsed
-- [ ] <5 seconds from reaction to summary posted
-- [ ] Cache hit rate >60% for repeated URLs
+- [ ] <5 seconds from command to summary delivered
+- [ ] Cache hit rate >60% for repeated URLs (via DynamoDB)
 - [ ] User satisfaction (measured by continued usage)
 
 ### Feature 2 (Interactive Q&A)
@@ -848,21 +555,19 @@ if USE_BEDROCK {
 ## Timeline Summary
 
 ```
-Week 1-2:  Article Summarization Foundation
-Week 2-3:  Article Summarization Integration & Testing
-Week 3-4:  Interactive Q&A Implementation
-Week 4-5:  AWS Migration Preparation & Bedrock Integration
-Week 5-6:  Lambda Conversion & Infrastructure Setup
-Week 6-7:  Migration Execution & Monitoring
-Week 7-8:  Optimization & Stabilization
+COMPLETED:  Feature 1 — Article Summarization (2026-02-13)
+COMPLETED:  Article fetch fix + dedup marker change (2026-02-16)
+COMPLETED:  Feature 3 Phase 1 — Slash commands + context menu (2026-02-16)
+IN PROGRESS: Feature 3 — AWS Migration (bedrock-migration branch)
+  Phase 1:  Slash commands (local, Gateway-based) — DONE
+  Phase 2:  Bedrock integration (replace Python/Mistral-7B)
+  Phase 3:  Lambda conversion (two-Lambda pattern)
+  Phase 4:  Infrastructure deploy (Terraform)
+  Phase 5:  Optimization
+NOT STARTED: Feature 2 — Interactive Q&A in DMs (depends on Feature 3 for DynamoDB + Bedrock)
 ```
 
-**Total estimated time:** 8 weeks for all three initiatives
-
-**Can be parallelized:**
-- Features 1 & 2 can be developed concurrently
-- Feature 3 migration can start while 1 & 2 are in testing
-- Suggested: Build features 1 & 2 with AWS SDK from the start to ease migration
+**Sequencing:** Feature 3 must come before Feature 2, since Q&A sessions depend on DynamoDB (from Feature 3) and Bedrock (also Feature 3). Slash command migration (Feature 3 Phase 1) can begin immediately.
 
 ---
 
@@ -870,53 +575,59 @@ Week 7-8:  Optimization & Stabilization
 
 ### New Files to Create
 ```
+lambda_gateway/src/
+└── main.rs                      # Lambda A — signature verify, ACK, async invoke
+
+lambda_worker/src/
+├── main.rs                      # Lambda B — entry point, command dispatch
+├── bedrock_client.rs            # AWS Bedrock integration (Claude 3.5 Haiku)
+├── discord_followup.rs          # POST results via Discord followup webhook
+├── state_manager.rs             # DynamoDB wrapper
+└── dm_session_manager.rs        # DM conversation state (Feature 2)
+
+infrastructure/
+└── main.tf                      # Terraform — API Gateway, Lambdas, DynamoDB, IAM
+```
+
+### Files to Reuse / Adapt
+```
 rust_bot/src/
-├── article_handler.rs          # Article fetching and processing
-├── bedrock_client.rs            # AWS Bedrock integration
-├── dm_session_manager.rs        # DM conversation state
-├── lambda_handler.rs            # Lambda entry point (for migration)
-└── state_manager.rs             # DynamoDB wrapper
-
-python_llm/src/
-├── article_prompt.py            # Article-specific prompts
-└── qa_prompt.py                 # Q&A conversation prompts
+├── article_handler.rs           # extract_url(), fetch_article_text() → reuse in Lambda B
+└── message_utils.rs             # Message formatting helpers → reuse in Lambda B
 ```
 
-### Files to Modify
+### Files to Delete (Post-Migration)
 ```
-rust_bot/src/
-├── bot.rs                       # Add article & DM event handlers
-├── message_utils.rs             # Add thread creation, URL extraction
-└── main.rs                      # AWS SDK initialization
-
-python_llm/src/
-└── model_chain.py               # Add article & Q&A methods
-```
-
-### Files to Eventually Delete (Post-Migration)
-```
-python_llm/                      # Entire directory
-rust_bot/src/python_runner.rs   # Subprocess execution
-rust_bot/src/read_and_write.rs  # File-based IPC (partially)
+python_llm/                      # Entire directory (replaced by Bedrock)
+rust_bot/src/python_runner.rs   # Subprocess execution (replaced by Bedrock)
+rust_bot/src/read_and_write.rs  # File-based IPC (no longer needed)
+rust_bot/src/handle_events.rs   # Serenity reaction handlers (replaced by Lambda A)
+rust_bot/src/worker_and_job.rs  # MPSC worker queue (replaced by Lambda B)
 ```
 
 ---
 
-## Questions & Decisions Needed
+## Questions & Decisions
 
-1. ~~**Article summarization emoji:** Confirm 📖 is the chosen emoji?~~ → Yes, 📖 (`:open_book:`) confirmed ✅
-2. **DM session duration:** 24 hours or configurable per user?
-3. **Bedrock model preference:** Claude Haiku (fast/cheap) or Sonnet (better quality)?
-4. **Multi-region:** Start with single region or multi-region from day 1?
-5. **Rate limiting:** Per-user limits on API calls?
-6. **Cost alerts:** What monthly budget threshold should trigger alerts?
+### Resolved
+1. ~~**Article summarization trigger:**~~ → Migrating from 📖 reaction to `Summarize Article` context menu + `/summary-article` slash command
+2. ~~**Bedrock model:**~~ → Claude 3.5 Haiku (fast, cost-effective)
+3. ~~**Hosting architecture:**~~ → Lambda + API Gateway (HTTP) over ECS Fargate
+4. ~~**Interaction model:**~~ → Slash commands + context menu (Discord HTTP Interactions), replacing Gateway WebSocket + emoji reactions
+5. ~~**Article dedup:**~~ → DynamoDB URL hash lookup (replaces bot reaction check)
+6. ~~**Article summary visibility:**~~ → Context menu = visible reply to channel; `/summary-article` = ephemeral (user-only)
+
+### Open
+1. **DM session duration:** 24 hours or configurable per user?
+2. **Multi-region:** Start with single region or multi-region from day 1?
+3. **Rate limiting:** Per-user limits on API calls?
+4. **Cost alerts:** What monthly budget threshold should trigger alerts?
 
 ---
 
 ## Next Steps
 
-1. **Review & approve this roadmap**
-2. **Prioritize features:** All three together or phased delivery?
-3. **Set up AWS account and dev environment**
-4. **Create detailed task breakdown in project management tool**
-5. **Begin Phase 1 implementation**
+1. ~~**Implement slash commands locally** (Feature 3, Phase 1)~~ — DONE (2026-02-16)
+2. **Integrate Bedrock** (Feature 3, Phase 2) — replace Python/Mistral-7B with direct Rust → Bedrock calls
+3. **Convert to Lambda** (Feature 3, Phase 3-4) — two-Lambda pattern, Terraform deploy
+4. **Begin Feature 2** (Interactive Q&A) — depends on DynamoDB + Bedrock from Feature 3
