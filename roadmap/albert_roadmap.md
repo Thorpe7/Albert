@@ -462,12 +462,14 @@ See `implement_strats.md` for full Terraform HCL and GitHub Actions YAML.
 >         └── handlers.rs             # handle_summary_chat, handle_summary_article_*
 > ```
 
-**Phase 4: Infrastructure & Deploy**
-19. Deploy API Gateway (HTTP) + both Lambdas with Terraform
-20. Configure Discord Interactions Endpoint URL to API Gateway
-21. Set up CloudWatch logging, monitoring, and cost alerts
-22. Deploy to staging, test for 48 hours
+**Phase 4: Infrastructure & Deploy** — DONE (2026-02-16)
+19. ~~Deploy API Gateway (HTTP) + both Lambdas with Terraform~~ ✅
+20. ~~Configure Discord Interactions Endpoint URL to API Gateway~~ ✅
+21. ~~Set up CloudWatch logging (14-day retention on both Lambdas)~~ ✅
+22. ~~Verify end-to-end: Discord Ping → Lambda A ACK, slash command → Lambda B → Bedrock → Discord~~ ✅
 23. Cut over to production
+
+> **Implementation Notes (Phase 4):** Terraform creates 19 resources in `infrastructure/`: API Gateway HTTP API with `POST /discord-interactions` route and `$default` auto-deploy stage; two Lambda functions on `provided.al2023` x86_64 (gateway: 5s/128MB, worker: 60s/256MB); two separate IAM roles with least-privilege (gateway can only invoke worker, worker can only invoke Bedrock + CRUD `albert-*` DynamoDB tables); three DynamoDB tables (albert-articles, albert-summaries, albert-dm-sessions) all PAY_PER_REQUEST with TTL; two CloudWatch log groups with 14-day retention. Build uses `cargo lambda build --release --output-format zip`. Bedrock IAM uses region wildcard (`arn:aws:bedrock:*::foundation-model/...`) because the `us.` cross-region inference profile can route to any US region. `RUST_LOG=info` env var required for application-level logging. Sensitive vars passed via `terraform apply -var="..."` referencing shell env vars or via `terraform.tfvars` (gitignored). Key gotcha: `reqwest` and `readability` must use `default-features = false` to avoid pulling in `openssl-sys` (Lambda uses rustls).
 
 **Phase 5: Optimization**
 24. Optimize Lambda cold start times (binary size, provisioned concurrency if needed)
@@ -590,11 +592,12 @@ COMPLETED:  Article fetch fix + dedup marker change (2026-02-16)
 COMPLETED:  Feature 3 Phase 1 — Slash commands + context menu (2026-02-16)
 COMPLETED:  Feature 3 Phase 2 — Bedrock integration (2026-02-16)
 COMPLETED:  Feature 3 Phase 3 — Lambda conversion / Cargo workspace (2026-02-16)
+COMPLETED:  Feature 3 Phase 4 — Terraform deploy, Discord endpoint verified (2026-02-16)
 IN PROGRESS: Feature 3 — AWS Migration (bedrock-migration branch)
   Phase 1:  Slash commands (local, Gateway-based) — DONE
   Phase 2:  Bedrock integration (replace Python/Mistral-7B) — DONE
   Phase 3:  Lambda conversion (two-Lambda pattern, rust_bot kept as fallback) — DONE
-  Phase 4:  Infrastructure deploy (Terraform)
+  Phase 4:  Infrastructure deploy (Terraform) — DONE
   Phase 5:  Optimization
 NOT STARTED: Feature 2 — Interactive Q&A in DMs (depends on Feature 3 for DynamoDB + Bedrock)
 ```
@@ -621,14 +624,19 @@ rust_bot/src/
 └── bedrock_client.rs            # BedrockClient (Phase 2, also copied to lambda_worker)
 ```
 
+### Files Created (Phase 4)
+```
+infrastructure/
+├── main.tf                      # Provider, IAM, Lambdas, API Gateway, DynamoDB, CloudWatch
+├── variables.tf                 # Input vars (secrets, config, zip paths)
+└── outputs.tf                   # API Gateway URL output
+```
+
 ### Files Still To Create
 ```
 lambda_worker/src/
 ├── state_manager.rs             # DynamoDB wrapper (Phase 5)
 └── dm_session_manager.rs        # DM conversation state (Feature 2)
-
-infrastructure/
-└── main.tf                      # Terraform — API Gateway, Lambdas, DynamoDB, IAM (Phase 4)
 ```
 
 ### Files Already Deleted (Phase 2)
@@ -673,6 +681,6 @@ rust_bot/                        # Full Serenity Gateway bot — kept as rollbac
 1. ~~**Implement slash commands locally** (Feature 3, Phase 1)~~ — DONE (2026-02-16)
 2. ~~**Integrate Bedrock** (Feature 3, Phase 2)~~ — DONE (2026-02-16)
 3. ~~**Convert to Lambda** (Feature 3, Phase 3)~~ — DONE (2026-02-16)
-4. **Deploy infrastructure** (Feature 3, Phase 4) — Terraform for API Gateway, Lambdas, IAM roles
+4. ~~**Deploy infrastructure** (Feature 3, Phase 4)~~ — DONE (2026-02-16)
 5. **Optimization** (Feature 3, Phase 5) — cold start tuning, DynamoDB caching, rate limiting
 6. **Begin Feature 2** (Interactive Q&A) — depends on DynamoDB + Bedrock from Feature 3

@@ -8,3 +8,10 @@ __pycache__/
 jobs/
 CLAUDE.md
 implement_strats.md
+
+# Terraform
+infrastructure/.terraform/
+infrastructure/.terraform.lock.hcl
+infrastructure/terraform.tfstate
+infrastructure/terraform.tfstate.backup
+infrastructure/terraform.tfvars

@@ -80,7 +80,7 @@ impl BedrockClient {
             )
             .send()
             .await
-            .map_err(|e| anyhow!("Bedrock API call failed: {}", e))?;
+            .map_err(|e| anyhow!("Bedrock API call failed: {:?}", e))?;
 
         let output = response.output()
             .ok_or_else(|| anyhow!("No output in Bedrock response"))?;

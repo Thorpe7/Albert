@@ -1,55 +1,100 @@
 # Albert
-AI chatbot for automating tasks in Discord and improving user experience.
+AI Discord bot that summarizes chat history and articles using AWS Bedrock (Claude 3.5 Haiku). Serverless architecture deployed via Terraform.
 
 ## TLDR
-| Emoji | Discord Name | What It Does |
-|-------|-------------|--------------|
-| 📄 | `:page_facing_up:` | DMs you a summary of today's chat |
-| 📑 | `:bookmark_tabs:` | DMs you a per-user summary of today's chat |
-| 📖 | `:open_book:` | Replies with a bullet-point summary of a linked article |
+| Command | What It Does |
+|---------|--------------|
+| `/summary-24hr` | Sends you an ephemeral summary of today's chat |
+| `/summary-peruser` | Sends you an ephemeral per-user summary of today's chat |
+| `/summary-article url:<link>` | Sends you an ephemeral bullet-point summary of a linked article |
+| Right-click message → Apps → "Summarize Article" | Replies with a bullet-point summary visible to the channel |
 
 ## Architecture
-Hybrid Rust/Python application with an event-driven worker queue pattern.
+Serverless two-Lambda pattern on AWS, deployed via Terraform.
 
-- **rust_bot/** — Discord bot built with Serenity. Handles events, job dispatch, and Discord API interactions.
-- **python_llm/** — LLM pipeline using Mistral-7B (4-bit quantized) via LangChain and HuggingFace for text summarization.
+```
+Discord (slash cmd / context menu)
+  │ HTTP POST
+  v
+API Gateway (HTTP API)
+  │ POST /discord-interactions
+  v
+Lambda A — Gateway (Rust)
+  │ Verify signature, ACK within 3s, invoke Lambda B async
+  v
+Lambda B — Worker (Rust)
+  │ Fetch messages/articles, call Bedrock, edit deferred response
+  ├──> AWS Bedrock (Claude 3.5 Haiku)
+  └──> DynamoDB (articles, summaries, dm-sessions)
+```
+
+**Why two Lambdas:** Discord requires a response within 3 seconds. Bedrock inference takes longer. Lambda A immediately returns a deferred response ("Bot is thinking..."), then asynchronously invokes Lambda B which does the actual work and posts the result via Discord's followup webhook.
+
+A legacy Serenity Gateway bot (`rust_bot/`) is kept as a local dev fallback.
 
 ## Features
 
 ### Chat Summarization
-React to any message with an emoji to get a summary of the channel's chat history for the day, delivered as a DM.
+Use slash commands to get a summary of the channel's chat history, delivered as an ephemeral message (only you see it).
 
-| Emoji | Name | Behavior |
-|-------|------|----------|
-| 📄 | `:page_facing_up:` | Standard summary of the day's discussion |
-| 📑 | `:bookmark_tabs:` | Per-user summary attributing points to each participant |
+| Command | Behavior |
+|---------|----------|
+| `/summary-24hr` | Standard summary of the day's discussion |
+| `/summary-peruser` | Per-user summary attributing points to each participant |
 
 ### Article Summarization
-React with 📖 (`:open_book:`) on a message containing a URL. Albert fetches the article, summarizes it, and replies to the original message. Summaries are formatted with a 📌 Main Takeaway and 📋 Key Points as bullet points.
+Two ways to summarize articles:
 
-- Deduplication: Albert reacts with 📖 after posting a summary. If the bot's reaction is already present, subsequent triggers are skipped.
-- Handles paywall/JS-only pages gracefully (logs error, skips silently).
+- **Context menu** (right-click a message → Apps → "Summarize Article"): Visible reply to the channel. Bot adds a checkmark reaction as a dedup marker.
+- **Slash command** (`/summary-article url:<link>`): Ephemeral response only you see.
 
-## How It Works
-1. Rust bot listens for emoji reactions on messages
-2. Reaction triggers a `Job` dispatched via a tokio MPSC channel to a worker
-3. Worker processes the job (fetches messages or article content, writes to temp file)
-4. Python subprocess loads Mistral-7B and generates a summary
-5. Rust bot reads the model's JSON response and sends it to Discord (DM or reply)
-6. Temp job directory is cleaned up
+Summaries are formatted with a main takeaway and key bullet points. Handles paywall/JS-only pages gracefully.
+
+## Project Structure
+```
+Albert/
+├── lambda_gateway/        # Lambda A — signature verify, deferred ACK, async invoke
+├── lambda_worker/         # Lambda B — Bedrock calls, Discord followup, article fetch
+├── rust_bot/              # Legacy Serenity Gateway bot (local dev fallback)
+├── infrastructure/        # Terraform — API Gateway, Lambdas, DynamoDB, IAM, CloudWatch
+└── roadmap/               # Implementation roadmap and planning docs
+```
 
 ## Environment Variables
-| Variable | Description |
-|----------|-------------|
-| `DISCORD_TOKEN` | Discord bot token |
-| `MISTRAL_TOKEN` | HuggingFace token for Mistral model access |
+| Variable | Where | Description |
+|----------|-------|-------------|
+| `DISCORD_PUBLIC_KEY` | Lambda A | Discord app public key (signature verification) |
+| `WORKER_FUNCTION_NAME` | Lambda A | Lambda B function name (auto-set by Terraform) |
+| `DISCORD_BOT_TOKEN` | Lambda B | Discord bot token (API calls) |
+| `DISCORD_APPLICATION_ID` | Lambda B | Discord app ID (interaction callbacks) |
+| `RUST_LOG` | Both | Log level (set to `info`) |
+| `DISCORD_TOKEN` | Local `.env` | For legacy `rust_bot` mode |
 
-## Running
+## Deploying
 ```bash
-# With Docker
-docker build -t albert .
-docker run --env-file .env albert
+# 1. Build Lambda binaries
+cargo lambda build --release --output-format zip -p lambda_gateway -p lambda_worker
 
-# Local development
+# 2. Deploy infrastructure
+cd infrastructure && terraform init
+terraform apply \
+  -var="discord_public_key=$DISCORD_PUBLIC_KEY" \
+  -var="discord_bot_token=$DISCORD_TOKEN" \
+  -var="discord_application_id=$DISCORD_APP_ID"
+
+# 3. Copy the api_gateway_url output
+# 4. Paste into Discord Developer Portal → General Information → Interactions Endpoint URL
+```
+
+### Prerequisites
+- AWS credentials configured (`aws configure`)
+- [cargo-lambda](https://www.cargo-lambda.info/) installed
+- [Terraform](https://www.terraform.io/) >= 1.5
+- Claude 3.5 Haiku enabled in [AWS Bedrock console](https://console.aws.amazon.com/bedrock/) under Model Access
+
+## Local Development
+```bash
+# Run the legacy Serenity Gateway bot
 cd rust_bot && cargo run
 ```
+Requires `.env` with `DISCORD_TOKEN` and AWS credentials configured.

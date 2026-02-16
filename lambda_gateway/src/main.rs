@@ -60,8 +60,21 @@ async fn handler(event: Request) -> Result<Response<Body>, lambda_http::Error> {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
 
+        tracing::info!(
+            public_key_len = public_key.len(),
+            signature_len = signature.len(),
+            timestamp = timestamp,
+            body_len = body_str.len(),
+            body_preview = &body_str[..body_str.len().min(100)],
+            "Verifying signature"
+        );
+
         if !verify_signature(&public_key, signature, timestamp, &body_str) {
-            tracing::warn!("Invalid signature");
+            tracing::warn!(
+                sig_empty = signature.is_empty(),
+                ts_empty = timestamp.is_empty(),
+                "Invalid signature"
+            );
             return json_response(401, &serde_json::json!({"error": "Invalid signature"}));
         }
     }

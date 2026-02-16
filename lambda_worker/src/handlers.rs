@@ -118,9 +118,7 @@ pub async fn handle_summary_article_slash(
         .ok_or_else(|| anyhow!("No URL provided in slash command"))?
         .to_string();
 
-    let article_text = tokio::task::spawn_blocking(move || {
-        fetch_article_text(&url)
-    }).await??;
+    let article_text = fetch_article_text(&url).await?;
 
     let summary = bedrock.summarize_article(&article_text).await?;
     let response = truncate_to_discord_limit(&summary);
@@ -165,9 +163,7 @@ pub async fn handle_summary_article_context_menu(
         })
         .ok_or_else(|| anyhow!("No URL found in the target message"))?;
 
-    let article_text = tokio::task::spawn_blocking(move || {
-        fetch_article_text(&url)
-    }).await??;
+    let article_text = fetch_article_text(&url).await?;
 
     let summary = bedrock.summarize_article(&article_text).await?;
     let response = truncate_to_discord_limit(&summary);
