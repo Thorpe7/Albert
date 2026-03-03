@@ -8,6 +8,7 @@ __pycache__/
 jobs/
 CLAUDE.md
 implement_strats.md
+usr.md
 
 # Terraform
 infrastructure/.terraform/
