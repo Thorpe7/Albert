@@ -8,6 +8,7 @@ __pycache__/
 jobs/
 implement_strats.md
 usr.md
+usr-learning.md
 
 # Terraform
 infrastructure/.terraform/
