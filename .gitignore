@@ -6,7 +6,6 @@ model_response.json
 .python-version
 __pycache__/
 jobs/
-CLAUDE.md
 implement_strats.md
 usr.md
 
