@@ -1,56 +1,45 @@
 use serenity::all::Message;
 use serenity::client::Context;
-use serenity::model::channel::Reaction;
+use serenity::model::id::ChannelId;
 use tokio::sync::mpsc::Receiver;
-use uuid::Uuid;
-use std::fs;
+use std::sync::Arc;
 
+use crate::bedrock_client::BedrockClient;
 use crate::bot_functions::{summarize_chat, summarize_article};
+use crate::response_target::{ResponseTarget, send_error_response};
 
 pub enum Job {
     SummarizeChat {
-        uuid: Uuid,
-        msg: Message,
+        channel_id: ChannelId,
         ctx: Context,
-        reaction: Reaction,
-        task_prompt: String
+        response_target: ResponseTarget,
+        task_prompt: String,
     },
     SummarizeArticle {
-        uuid: Uuid,
-        msg: Message,
         ctx: Context,
-        reaction: Reaction,
+        response_target: ResponseTarget,
         article_url: String,
+        original_msg: Option<Message>,
     },
 }
 
-pub fn start_worker(mut rx: Receiver<Job>) {
+pub fn start_worker(mut rx: Receiver<Job>, bedrock_client: Arc<BedrockClient>) {
     tokio::spawn(async move {
         while let Some(job) = rx.recv().await {
             match job {
-                Job::SummarizeChat { uuid, msg, ctx, reaction, task_prompt } => {
-                    match summarize_chat(uuid, msg, &ctx, reaction, task_prompt).await {
-                        Ok(_) => {
-                            let dir_path = format!("jobs/{}", uuid);
-                            if let Err(e) = fs::remove_dir_all(&dir_path) {
-                                eprintln!("Failed to delete job folder {}: {}", dir_path, e);
-                            }
-                        },
-                        Err(e) => {
-                            eprint!("Summarizing failed: {}",e);
+                Job::SummarizeChat { channel_id, ctx, response_target, task_prompt } => {
+                    if let Err(e) = summarize_chat(channel_id, &ctx, &response_target, &task_prompt, &bedrock_client).await {
+                        eprintln!("Summarizing failed: {}", e);
+                        if let Err(notify_err) = send_error_response(&response_target, &ctx, &e.to_string()).await {
+                            eprintln!("Failed to notify user of error: {}", notify_err);
                         }
                     }
                 }
-                Job::SummarizeArticle { uuid, msg, ctx, reaction, article_url } => {
-                    match summarize_article(uuid, msg, &ctx, reaction, article_url).await {
-                        Ok(_) => {
-                            let dir_path = format!("jobs/{}", uuid);
-                            if let Err(e) = fs::remove_dir_all(&dir_path) {
-                                eprintln!("Failed to delete job folder {}: {}", dir_path, e);
-                            }
-                        },
-                        Err(e) => {
-                            eprintln!("Article summarization failed: {}", e);
+                Job::SummarizeArticle { ctx, response_target, article_url, original_msg } => {
+                    if let Err(e) = summarize_article(&ctx, &response_target, article_url, original_msg.as_ref(), &bedrock_client).await {
+                        eprintln!("Article summarization failed: {}", e);
+                        if let Err(notify_err) = send_error_response(&response_target, &ctx, &e.to_string()).await {
+                            eprintln!("Failed to notify user of error: {}", notify_err);
                         }
                     }
                 }

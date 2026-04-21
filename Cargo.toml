@@ -1,3 +1,4 @@
 [workspace]
-members = ["rust_bot"]
+members = ["rust_bot", "lambda_gateway", "lambda_worker"]
+default-members = ["rust_bot"]
 resolver = "2"
